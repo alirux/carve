@@ -64,3 +64,7 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
     archiveClassifier = ""
     mergeServiceFiles()
 }
+
+tasks.named("startScripts") {
+    dependsOn(tasks.named("shadowJar"))
+}
