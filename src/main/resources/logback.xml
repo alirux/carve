@@ -1,0 +1,19 @@
+<configuration>
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d{HH:mm:ss} %-5level %logger{36} - %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <!-- Suppress Spoon/ECJ type-resolution warnings when running without full classpath -->
+  <logger name="spoon" level="WARN"/>
+  <logger name="org.eclipse.jdt" level="ERROR"/>
+  <!-- JDTCommentBuilder crashes on certain comment patterns (known Spoon bug #2482);
+       errors are non-fatal but noisy — the call graph is unaffected. -->
+  <logger name="spoon.support.reflect.code.CtStatementImpl" level="OFF"/>
+  <logger name="spoon.support.compiler.jdt.JDTCommentBuilder" level="OFF"/>
+
+  <root level="INFO">
+    <appender-ref ref="CONSOLE"/>
+  </root>
+</configuration>

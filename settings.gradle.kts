@@ -1,0 +1,3 @@
+// Copyright (C) 2026 Alberto Lirussi — AGPL 3.0
+
+rootProject.name = "carve"

@@ -1,0 +1,147 @@
+/*
+ * Copyright (C) 2026 Alberto Lirussi
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+package com.codingful.carve.analyzer;
+
+import com.codingful.carve.graph.CallGraph;
+import com.codingful.carve.model.ExternalCallType;
+import com.codingful.carve.model.MethodNode;
+import com.codingful.carve.model.SpringComponentType;
+import com.codingful.carve.model.TransactionPropagation;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class TransactionAnalyzerTest {
+
+    /**
+     * Builds a graph manually (no Spoon) so tests are fast and isolated.
+     */
+    private static MethodNode appNode(String id, boolean tx, TransactionPropagation prop) {
+        MethodNode n = new MethodNode(id, "com.example", "Cls", id, "com.example.Cls", true);
+        n.setTransactional(tx);
+        n.setPropagation(prop);
+        return n;
+    }
+
+    private static MethodNode httpNode(String id) {
+        MethodNode n = new MethodNode(id, "com.example", "Cls", id, "com.example.Cls", true);
+        n.addExternalCall(ExternalCallType.HTTP);
+        return n;
+    }
+
+    // -----------------------------------------------------------------------
+
+    @Test
+    void detectsHttpCallReachableFromTransactionalRoot() {
+        CallGraph cg = new CallGraph();
+
+        MethodNode root     = appNode("placeOrder", true, TransactionPropagation.REQUIRED);
+        MethodNode middle   = appNode("fetchInventory", false, TransactionPropagation.REQUIRED);
+        MethodNode httpSite = httpNode("callWarehouseApi");
+
+        cg.addVertex(root);
+        cg.addVertex(middle);
+        cg.addVertex(httpSite);
+        cg.addEdge(root, middle);
+        cg.addEdge(middle, httpSite);
+
+        List<TransactionRisk> risks = new TransactionAnalyzer(cg).findRisks();
+
+        assertThat(risks).hasSize(1);
+        assertThat(risks.get(0).transactionalRoot()).isEqualTo(root);
+        assertThat(risks.get(0).externalCallSite()).isEqualTo(httpSite);
+        assertThat(risks.get(0).callTypes()).contains(ExternalCallType.HTTP);
+        assertThat(risks.get(0).path()).containsExactly(root, middle, httpSite);
+    }
+
+    @Test
+    void requiresNewStopsTxScopePropagation() {
+        CallGraph cg = new CallGraph();
+
+        MethodNode root        = appNode("outerTx", true, TransactionPropagation.REQUIRED);
+        MethodNode newTxMethod = appNode("innerNewTx", true, TransactionPropagation.REQUIRES_NEW);
+        MethodNode httpSite    = httpNode("callExternal");
+
+        cg.addVertex(root);
+        cg.addVertex(newTxMethod);
+        cg.addVertex(httpSite);
+        cg.addEdge(root, newTxMethod);
+        cg.addEdge(newTxMethod, httpSite);
+
+        List<TransactionRisk> risks = new TransactionAnalyzer(cg).findRisks();
+
+        // The HTTP call is inside REQUIRES_NEW, not inside outerTx → no risk from root
+        // (innerNewTx starts its own scope, so it should itself appear as a root)
+        assertThat(risks).noneMatch(r -> r.transactionalRoot().equals(root));
+    }
+
+    @Test
+    void noRiskWhenHttpCallIsOutsideAnyTransaction() {
+        CallGraph cg = new CallGraph();
+
+        MethodNode nonTx   = appNode("doStuff", false, TransactionPropagation.REQUIRED);
+        MethodNode httpSite = httpNode("callApi");
+
+        cg.addVertex(nonTx);
+        cg.addVertex(httpSite);
+        cg.addEdge(nonTx, httpSite);
+
+        List<TransactionRisk> risks = new TransactionAnalyzer(cg).findRisks();
+
+        assertThat(risks).isEmpty();
+    }
+
+    @Test
+    void jdbcCallInsideTxIsNotARisk() {
+        CallGraph cg = new CallGraph();
+
+        MethodNode root = appNode("save", true, TransactionPropagation.REQUIRED);
+        MethodNode jdbc = new MethodNode("jdbcInsert", "com.example", "Repo",
+            "insert", "com.example.Repo", true);
+        jdbc.addExternalCall(ExternalCallType.JDBC);
+
+        cg.addVertex(root);
+        cg.addVertex(jdbc);
+        cg.addEdge(root, jdbc);
+
+        List<TransactionRisk> risks = new TransactionAnalyzer(cg).findRisks();
+
+        assertThat(risks).isEmpty();
+    }
+
+    @Test
+    void messagingCallInsideTxIsARisk() {
+        CallGraph cg = new CallGraph();
+
+        MethodNode root = appNode("processOrder", true, TransactionPropagation.REQUIRED);
+        MethodNode kafka = new MethodNode("sendEvent", "com.example", "Publisher",
+            "sendEvent", "com.example.Publisher", true);
+        kafka.addExternalCall(ExternalCallType.MESSAGING);
+
+        cg.addVertex(root);
+        cg.addVertex(kafka);
+        cg.addEdge(root, kafka);
+
+        List<TransactionRisk> risks = new TransactionAnalyzer(cg).findRisks();
+
+        assertThat(risks).hasSize(1);
+        assertThat(risks.get(0).callTypes()).contains(ExternalCallType.MESSAGING);
+    }
+}
