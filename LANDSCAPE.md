@@ -1,5 +1,7 @@
 # Tool landscape
 
+> **Disclaimer:** This comparison was generated with an automated tool and has not been manually verified. It should be treated as a starting point for a proper evaluation, not as a reliable reference. If you spot inaccuracies or know of tools that should be included, feedback is very welcome — feel free to open an issue.
+
 This document positions `carve` relative to existing tools in the Java static analysis and modernisation space.
 
 ---
