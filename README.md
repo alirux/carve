@@ -72,12 +72,36 @@ The analyser identifies two structural patterns that create conditions for datab
 
 ## Build
 
-Requires JDK 21+ (tested with JDK 25).
+### Prerequisites
+
+- JDK 25 (other versions ≥ 21 work for compilation, but Spoon's Java 25 source support requires the matching toolchain)
+- No separate Gradle installation — the wrapper (`./gradlew`) downloads the right version automatically
+
+### Local build
 
 ```bash
-./gradlew test          # run all tests
-./gradlew shadowJar     # build fat-jar → build/libs/carve-1.0.0-SNAPSHOT.jar
+./gradlew test          # compile + run all tests
+./gradlew shadowJar     # build fat-jar → build/libs/carve-<version>.jar
+./gradlew build         # both of the above
 ```
+
+When built locally the JAR is versioned `dev-SNAPSHOT`. Pass `VERSION=x.y.z` to produce a named build:
+
+```bash
+VERSION=1.2.0 ./gradlew shadowJar
+# → build/libs/carve-1.2.0.jar
+```
+
+### Releases
+
+Releases are created by pushing a version tag. GitHub Actions builds the fat-jar and attaches it to the release automatically:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The tag must follow the `v<semver>` format (e.g. `v1.0.0`, `v1.2.3`). The resulting JAR and release notes are published on the [Releases](../../releases) page.
 
 ## Run
 

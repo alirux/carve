@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.codingful"
-version = "1.0.0-SNAPSHOT"
+version = System.getenv("VERSION") ?: "dev-SNAPSHOT"
 
 java {
     toolchain {
