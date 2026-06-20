@@ -391,20 +391,29 @@ Multi-project analysis gives you the full picture that single-module analysis ca
 
 ## 8. Reporting: interactive viewers, DOT, JSON, console
 
-The tool always writes three files (`class-graph.html`, `class-graph.gexf`, `analysis.json`), optionally writes a fourth (`call-graph.dot`, via `--dot`), and can additionally print to the console.
+The tool always writes four files (`class-graph.html`, `package-graph.html`, `class-graph.gexf`, `analysis.json`), optionally writes a fifth (`call-graph.dot`, via `--dot`), and can additionally print to the console.
 
-### Class-level collapse — the interactive viewers (recommended)
+### Multi-level collapse — the interactive viewers (recommended)
 
 A method-level graph of a real monolith easily exceeds 10,000 nodes and 20,000 edges. Rendered as a static SVG it is an unreadable "hairball": the image is technically correct but conveys nothing. No renderer fixes this — the problem is showing every method at once.
 
-The tool therefore collapses the method-level graph to **class level**: one node per class, edges weighted by the number of underlying method calls, with each class node aggregating the metadata of its methods (project, `@Transactional`, external-call types, whether any method is cyclic or on a risk path). On a large codebase this is a 10–15× reduction (e.g. ~8,000 methods → ~600 classes) — small enough to explore interactively.
+The tool collapses the method-level graph at **two levels**, each emitted as a self-contained interactive viewer:
 
-Two interactive forms are emitted:
+#### Class-level collapse (`class-graph.html`)
 
-- **`class-graph.html`** — a self-contained 3D viewer built on [3d-force-graph](https://github.com/vasturiano/3d-force-graph) (WebGL/Three.js). Open it in a browser; nothing to install. Supports rotate / zoom / pan, per-project filtering, a "risks only" filter, risk highlighting, and class search. In multi-project mode nodes are coloured by project so the module boundary is visible; otherwise by role (transactional / external / both).
-- **`class-graph.gexf`** — the same class-level graph in [Gephi](https://gephi.org/)'s native format, with colour and size pre-set via `viz:` attributes. Every aggregated attribute is a Gephi column, so you can partition, filter, and re-colour by project, role, cyclicity, or method count, and run ForceAtlas2 / community detection.
+One node per class, edges weighted by underlying method-call count; each class node aggregates the metadata of its methods (project, `@Transactional`, external-call types, cyclic membership, risk membership). On a large codebase this is a 10–15× reduction (e.g. ~8,000 methods → ~600 classes).
 
-Why class level: for an architectural conversation — "which modules depend on which, where are the cycles, which classes are the hotspots" — the class is the right unit. Method-level detail lives in the console reports and `analysis.json`, which name the exact methods.
+**`class-graph.html`** — a self-contained 3D viewer built on [3d-force-graph](https://github.com/vasturiano/3d-force-graph) (WebGL/Three.js). Open it in a browser; nothing to install. Supports rotate / zoom / pan, per-project filtering, a "risks only" filter, risk highlighting, and class search. In multi-project mode nodes are coloured by project so the module boundary is visible; otherwise by role (transactional / external / both).
+
+Also emitted as **`class-graph.gexf`** — the same class-level graph in [Gephi](https://gephi.org/)'s native format, with colour and size pre-set via `viz:` attributes. Every aggregated attribute is a Gephi column, so you can partition, filter, and re-colour by project, role, cyclicity, or method count, and run ForceAtlas2 / community detection.
+
+#### Package-level collapse (`package-graph.html`)
+
+One node per Java package, sized proportionally to the number of classes it contains, edges weighted by cross-package class-to-class calls. Attributes are the union of the underlying class nodes (transactional, external-call, cyclic, risk). This is typically a 5–20× further reduction from the class-level graph — ideal for the first architectural overview.
+
+**`package-graph.html`** — same 3D viewer technology as `class-graph.html`. Includes a **"Group by project" checkbox** that clusters packages by module using a secondary spring layout, making cross-project dependencies immediately visible.
+
+Why these two levels: for an architectural conversation — "which modules depend on which, where are the cycles" — the package is the right starting unit, and the class level shows the next layer of detail. Method-level specifics live in the console reports and `analysis.json`.
 
 ### `call-graph.dot` (Graphviz, method-level — opt-in via `--dot`)
 

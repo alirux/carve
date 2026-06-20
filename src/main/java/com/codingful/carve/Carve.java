@@ -26,6 +26,7 @@ import com.codingful.carve.extractor.CallGraphExtractor;
 import com.codingful.carve.extractor.ProjectResolver;
 import com.codingful.carve.extractor.UserDefinedMarkers;
 import com.codingful.carve.graph.CallGraph;
+import com.codingful.carve.model.MethodNode;
 import com.codingful.carve.reporter.ClassGraphModel;
 import com.codingful.carve.reporter.ConsoleReporter;
 import com.codingful.carve.reporter.DotReporter;
@@ -40,17 +41,15 @@ import spoon.Launcher;
 import spoon.reflect.CtModel;
 
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.io.UncheckedIOException;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
-import java.util.Set;
-import com.codingful.carve.model.MethodNode;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executors;
@@ -67,53 +66,75 @@ import java.util.concurrent.Executors;
  *   java -jar carve.jar /path/to/src/main/java --classpath /path/to/lib/*.jar --java 21
  * </pre>
  *
- * Outputs two files in the current directory:
+ * Outputs files in the output directory (default: current directory):
  * <ul>
- *   <li>{@code call-graph.dot}  — Graphviz DOT (compile with {@code dot -Tsvg})</li>
- *   <li>{@code analysis.json}   — Summary, transaction risks, package coupling</li>
+ *   <li>{@code class-graph.html}   — Interactive class-level graph (open in browser)</li>
+ *   <li>{@code package-graph.html} — Interactive package-level graph (open in browser)</li>
+ *   <li>{@code class-graph.gexf}   — Class graph for Gephi</li>
+ *   <li>{@code analysis.json}      — Full analysis results (risks, paths, coupling)</li>
+ *   <li>{@code call-graph.dot}     — Method-level Graphviz DOT (opt-in via {@code --dot})</li>
  * </ul>
  */
 public class Carve {
 
     private static final Logger log = LoggerFactory.getLogger(Carve.class);
 
+    private static final String USAGE = """
+        Usage: carve <source-root> [options]
+           or: carve --source <name>:<path> [--source <name>:<path> ...] [options]
+
+        Options:
+          --classpath <path>         Colon-separated JARs for type resolution
+          --java <version>           Java compliance level (default: 21)
+          --encoding <name>          Source encoding (default: UTF-8)
+          --markers <file>           Custom external-call markers (.properties)
+          --print-risks             Print transaction risk call stacks to console
+          --print-paths             Print the 10 longest call chains to console
+          --print-cycles            Print cyclic method clusters to console
+          --print-lock-risks        Print DB lock/deadlock risk patterns to console
+          --dot                     Also write method-level call-graph.dot (Graphviz)
+          --output <dir>            Output directory (default: current dir)
+        """;
+
+    // -----------------------------------------------------------------------
+    // Entry point
+    // -----------------------------------------------------------------------
+
     public static void main(String[] args) throws IOException {
-        // Parse --source flags (repeatable: --source name:path)
+        CarveConfig config = parseArgs(args);
+        long t0 = System.nanoTime();
+
+        CtModel   model  = buildSpoonModel(config);
+        CallGraph cg     = extractCallGraph(model, config);
+        Analyses  result = runAnalyses(cg, config);
+        writeReports(cg, result, config);
+        printSummary(cg, result, config, t0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Pipeline phases
+    // -----------------------------------------------------------------------
+
+    private static CarveConfig parseArgs(String[] args) {
         List<String> sourceArgs = argValues(args, "--source");
         boolean hasPositionalSource = args.length > 0 && !args[0].startsWith("-");
 
         if (sourceArgs.isEmpty() && !hasPositionalSource) {
-            System.err.println("""
-                Usage: carve <source-root> [options]
-                   or: carve --source <name>:<path> [--source <name>:<path> ...] [options]
-
-                Options:
-                  --classpath <path>         Colon-separated JARs for type resolution
-                  --java <version>           Java compliance level (default: 21)
-                  --encoding <name>          Source encoding (default: UTF-8)
-                  --markers <file>           Custom external-call markers (.properties)
-                  --print-risks             Print transaction risk call stacks to console
-                  --print-paths             Print the 10 longest call chains to console
-                  --print-cycles            Print cyclic method clusters to console
-                  --print-lock-risks        Print DB lock/deadlock risk patterns to console
-                  --dot                     Also write method-level call-graph.dot (Graphviz)
-                  --output <dir>            Output directory (default: current dir)
-                """);
+            System.err.println(USAGE);
             System.exit(1);
         }
 
-        String classpath   = argValue(args, "--classpath", null);
-        int    javaLevel   = Integer.parseInt(argValue(args, "--java", "21"));
-        Charset encoding   = Charset.forName(argValue(args, "--encoding", "UTF-8"));
-        String markersFile = argValue(args, "--markers", null);
-        boolean printRisks     = hasFlag(args, "--print-risks");
-        boolean printPaths     = hasFlag(args, "--print-paths");
-        boolean printCycles    = hasFlag(args, "--print-cycles");
-        boolean printLockRisks = hasFlag(args, "--print-lock-risks");
-        boolean writeDot       = hasFlag(args, "--dot");
-        String outputDir   = argValue(args, "--output", ".");
+        String  classpath    = argValue(args, "--classpath", null);
+        int     javaLevel    = Integer.parseInt(argValue(args, "--java", "21"));
+        Charset encoding     = Charset.forName(argValue(args, "--encoding", "UTF-8"));
+        String  markersFile  = argValue(args, "--markers", null);
+        boolean printRisks   = hasFlag(args, "--print-risks");
+        boolean printPaths   = hasFlag(args, "--print-paths");
+        boolean printCycles  = hasFlag(args, "--print-cycles");
+        boolean printLocks   = hasFlag(args, "--print-lock-risks");
+        boolean writeDot     = hasFlag(args, "--dot");
+        String  outputDir    = argValue(args, "--output", ".");
 
-        // Build project resolver
         ProjectResolver resolver;
         String primarySourceRoot;
 
@@ -139,70 +160,71 @@ public class Carve {
                 primarySourceRoot, javaLevel, encoding, classpath, markersFile);
         }
 
-        long t0 = System.nanoTime();
+        return new CarveConfig(resolver, primarySourceRoot, classpath, javaLevel, encoding,
+            markersFile, printRisks, printPaths, printCycles, printLocks, writeDot, outputDir);
+    }
 
-        // ------------------------------------------------------------------
-        // 1. Parse source with Spoon
-        // ------------------------------------------------------------------
+    private static CtModel buildSpoonModel(CarveConfig c) {
         Launcher launcher = new Launcher();
-        if (resolver.isMultiProject()) {
-            resolver.sourcePaths().forEach(launcher::addInputResource);
+        if (c.resolver().isMultiProject()) {
+            c.resolver().sourcePaths().forEach(launcher::addInputResource);
         } else {
-            launcher.addInputResource(primarySourceRoot);
+            launcher.addInputResource(c.primarySourceRoot());
         }
-        if (classpath != null) {
-            launcher.getEnvironment().setSourceClasspath(classpath.split(":"));
+        if (c.classpath() != null) {
+            launcher.getEnvironment().setSourceClasspath(c.classpath().split(":"));
         }
-        launcher.getEnvironment().setComplianceLevel(javaLevel);
-        launcher.getEnvironment().setEncoding(encoding);
+        launcher.getEnvironment().setComplianceLevel(c.javaLevel());
+        launcher.getEnvironment().setEncoding(c.encoding());
         // Do not compile — analysis only
         launcher.getEnvironment().setShouldCompile(false);
         // Log type-resolution warnings at WARN level (suppress in production via logback.xml)
-        launcher.getEnvironment().setNoClasspath(classpath == null);
+        launcher.getEnvironment().setNoClasspath(c.classpath() == null);
 
         log.info("Building Spoon model…");
         long tSpoon = System.nanoTime();
         CtModel model = launcher.buildModel();
         log.info("Model built: {} types  [{}]", model.getAllTypes().size(), elapsed(tSpoon));
+        return model;
+    }
 
-        // ------------------------------------------------------------------
-        // 2. Extract call graph
-        // ------------------------------------------------------------------
-        UserDefinedMarkers customMarkers = resolveMarkers(markersFile, primarySourceRoot);
-
+    private static CallGraph extractCallGraph(CtModel model, CarveConfig c) throws IOException {
+        UserDefinedMarkers customMarkers = resolveMarkers(c.markersFile(), c.primarySourceRoot());
         CallGraph callGraph = new CallGraph();
         long tExtract = System.nanoTime();
-        CallGraphExtractor extractor = new CallGraphExtractor(callGraph, customMarkers, resolver);
+        CallGraphExtractor extractor =
+            new CallGraphExtractor(callGraph, customMarkers, c.resolver());
         model.getAllTypes().forEach(extractor::scan);
         extractor.resolveInterfaceCalls();
         log.info("Call graph: {}  [{}]", callGraph, elapsed(tExtract));
+        return callGraph;
+    }
 
-        // ------------------------------------------------------------------
-        // 3. Run analyses
-        // ------------------------------------------------------------------
+    private static Analyses runAnalyses(CallGraph cg, CarveConfig c) {
         long tRisks = System.nanoTime();
-        List<TransactionRisk> risks = new TransactionAnalyzer(callGraph).findRisks();
+        List<TransactionRisk> risks = new TransactionAnalyzer(cg).findRisks();
         log.info("Transaction risks: {}  [{}]", risks.size(), elapsed(tRisks));
 
         long tPaths = System.nanoTime();
         List<PathAnalyzer.LongestPath> longestPaths =
-            new PathAnalyzer(callGraph).findLongestPaths(10);
+            new PathAnalyzer(cg).findLongestPaths(10);
         log.info("Longest paths: top {}  [{}]", longestPaths.size(), elapsed(tPaths));
 
         long tCoupling = System.nanoTime();
-        CouplingAnalyzer couplingAnalyzer = new CouplingAnalyzer(callGraph);
+        CouplingAnalyzer couplingAnalyzer = new CouplingAnalyzer(cg);
         List<Set<MethodNode>> cyclicClusters = couplingAnalyzer.findCyclicClusters();
         Map<String, CouplingAnalyzer.PackageCoupling> coupling =
             couplingAnalyzer.analysePackageCoupling();
-        log.info("Coupling analysis: {} cyclic clusters  [{}]", cyclicClusters.size(), elapsed(tCoupling));
+        log.info("Coupling analysis: {} cyclic clusters  [{}]",
+            cyclicClusters.size(), elapsed(tCoupling));
 
         ConsoleReporter console = new ConsoleReporter(System.out);
-        if (printRisks)  console.print(risks);
-        if (printPaths)  console.printLongestPaths(longestPaths);
-        if (printCycles) console.printCycles(cyclicClusters);
+        if (c.printRisks())   console.print(risks);
+        if (c.printPaths())   console.printLongestPaths(longestPaths);
+        if (c.printCycles())  console.printCycles(cyclicClusters);
 
         long tLock = System.nanoTime();
-        LockRiskAnalyzer lockAnalyzer = new LockRiskAnalyzer(callGraph);
+        LockRiskAnalyzer lockAnalyzer = new LockRiskAnalyzer(cg);
         List<LockRiskAnalyzer.NestedTxRisk> nestedTxRisks =
             lockAnalyzer.findNestedRequiresNewRisks();
         List<LockRiskAnalyzer.CyclicTxRisk> cyclicTxRisks =
@@ -210,12 +232,15 @@ public class Carve {
         log.info("Lock risks: {} nested-tx, {} cyclic-tx  [{}]",
             nestedTxRisks.size(), cyclicTxRisks.size(), elapsed(tLock));
 
-        if (printLockRisks) console.printLockRisks(nestedTxRisks, cyclicTxRisks);
+        if (c.printLockRisks()) console.printLockRisks(nestedTxRisks, cyclicTxRisks);
 
-        // ------------------------------------------------------------------
-        // 4. Write reports (parallel — each reporter writes to a separate file)
-        // ------------------------------------------------------------------
-        Path outPath = Path.of(outputDir);
+        return new Analyses(risks, longestPaths, cyclicClusters, coupling,
+            nestedTxRisks, cyclicTxRisks);
+    }
+
+    private static void writeReports(CallGraph cg, Analyses r, CarveConfig c)
+            throws IOException {
+        Path outPath = Path.of(c.outputDir());
         Files.createDirectories(outPath);
 
         Path jsonFile    = outPath.resolve("analysis.json");
@@ -227,7 +252,7 @@ public class Carve {
         // Class-level collapse is shared by GEXF and HTML; compute once on the main thread.
         long tCollapse = System.nanoTime();
         ClassGraphModel classModel = ClassGraphModel.collapse(
-            callGraph, risks, cyclicClusters, nestedTxRisks, cyclicTxRisks);
+            cg, r.risks(), r.cyclicClusters(), r.nestedTxRisks(), r.cyclicTxRisks());
         log.info("Class model collapsed: {} classes, {} edges  [{}]",
             classModel.nodes().size(), classModel.edges().size(), elapsed(tCollapse));
 
@@ -243,18 +268,20 @@ public class Carve {
             reportTasks.add(CompletableFuture.runAsync(ioTask(() -> {
                 long t = System.nanoTime();
                 try (var w = Files.newBufferedWriter(jsonFile)) {
-                    new JsonReporter(callGraph).write(w, risks, longestPaths, cyclicClusters, coupling, nestedTxRisks, cyclicTxRisks);
+                    new JsonReporter(cg).write(w, r.risks(), r.longestPaths(),
+                        r.cyclicClusters(), r.coupling(), r.nestedTxRisks(), r.cyclicTxRisks());
                 }
                 log.info("JSON written: {}  [{}]", jsonFile, elapsed(t));
             }), exec));
 
             // Method-level DOT is opt-in: on a large monolith its SVG is an unreadable
             // hairball, so the interactive class-level exports below are the default.
-            if (writeDot) {
+            if (c.writeDot()) {
                 reportTasks.add(CompletableFuture.runAsync(ioTask(() -> {
                     long t = System.nanoTime();
                     try (var w = Files.newBufferedWriter(dotFile)) {
-                        new DotReporter(callGraph, cyclicClusters).writeWithRisks(w, true, risks);
+                        new DotReporter(cg, r.cyclicClusters())
+                            .writeWithRisks(w, true, r.risks());
                     }
                     log.info("DOT written: {}  [{}]", dotFile, elapsed(t));
                 }), exec));
@@ -294,17 +321,24 @@ public class Carve {
             }
         }
         log.info("Reports written (wall clock)  [{}]", elapsed(tReports));
+    }
 
-        // ------------------------------------------------------------------
-        // 5. Console summary
-        // ------------------------------------------------------------------
+    private static void printSummary(CallGraph cg, Analyses r, CarveConfig c, long t0) {
+        Path outPath     = Path.of(c.outputDir());
+        Path htmlFile    = outPath.resolve("class-graph.html");
+        Path pkgHtmlFile = outPath.resolve("package-graph.html");
+        Path gexfFile    = outPath.resolve("class-graph.gexf");
+        Path jsonFile    = outPath.resolve("analysis.json");
+        Path dotFile     = outPath.resolve("call-graph.dot");
+
         String reports = String.join("\n           ",
             htmlFile.toAbsolutePath() + " (open in browser)",
             pkgHtmlFile.toAbsolutePath() + " (open in browser)",
             gexfFile.toAbsolutePath() + " (open in Gephi)",
             jsonFile.toAbsolutePath().toString())
-            + (writeDot ? "\n           " + dotFile.toAbsolutePath() : "");
+            + (c.writeDot() ? "\n           " + dotFile.toAbsolutePath() : "");
 
+        int appCount = cg.applicationNodes().size();
         System.out.printf("""
             %n=== Analysis complete ===%n
             Vertices : %d  (application: %d, stubs: %d)
@@ -313,11 +347,9 @@ public class Carve {
             Total    : %s%n
             Reports  : %s%n
             """,
-            callGraph.vertexCount(),
-            callGraph.applicationNodes().size(),
-            callGraph.vertexCount() - callGraph.applicationNodes().size(),
-            callGraph.edgeCount(),
-            risks.size(),
+            cg.vertexCount(), appCount, cg.vertexCount() - appCount,
+            cg.edgeCount(),
+            r.risks().size(),
             elapsed(t0),
             reports
         );
@@ -432,4 +464,32 @@ public class Carve {
             }
         };
     }
+
+    // -----------------------------------------------------------------------
+    // Internal records
+    // -----------------------------------------------------------------------
+
+    private record CarveConfig(
+        ProjectResolver resolver,
+        String primarySourceRoot,
+        String classpath,
+        int javaLevel,
+        Charset encoding,
+        String markersFile,
+        boolean printRisks,
+        boolean printPaths,
+        boolean printCycles,
+        boolean printLockRisks,
+        boolean writeDot,
+        String outputDir
+    ) {}
+
+    private record Analyses(
+        List<TransactionRisk> risks,
+        List<PathAnalyzer.LongestPath> longestPaths,
+        List<Set<MethodNode>> cyclicClusters,
+        Map<String, CouplingAnalyzer.PackageCoupling> coupling,
+        List<LockRiskAnalyzer.NestedTxRisk> nestedTxRisks,
+        List<LockRiskAnalyzer.CyclicTxRisk> cyclicTxRisks
+    ) {}
 }

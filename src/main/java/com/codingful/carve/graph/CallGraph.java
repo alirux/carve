@@ -69,16 +69,16 @@ public class CallGraph {
     public Set<MethodNode> vertices()  { return graph.vertexSet(); }
     public Set<DefaultEdge> edges()    { return graph.edgeSet(); }
 
-    public Set<MethodNode> successors(MethodNode node) {
-        return graph.outgoingEdgesOf(node).stream()
+    public Iterable<MethodNode> successors(MethodNode node) {
+        return () -> graph.outgoingEdgesOf(node).stream()
             .map(graph::getEdgeTarget)
-            .collect(Collectors.toSet());
+            .iterator();
     }
 
-    public Set<MethodNode> predecessors(MethodNode node) {
-        return graph.incomingEdgesOf(node).stream()
+    public Iterable<MethodNode> predecessors(MethodNode node) {
+        return () -> graph.incomingEdgesOf(node).stream()
             .map(graph::getEdgeSource)
-            .collect(Collectors.toSet());
+            .iterator();
     }
 
     // -----------------------------------------------------------------------

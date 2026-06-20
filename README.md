@@ -215,14 +215,16 @@ java -jar carve.jar src/main/java --markers markers/my-project.properties
 
 | File | Description |
 |---|---|
-| `class-graph.html` | **Interactive 3D viewer** — open in a browser. Class-level graph with rotate/zoom/pan, per-project filtering, risk highlighting, and search. |
+| `class-graph.html` | **Interactive 3D class viewer** — open in a browser. One node per class; rotate/zoom/pan, per-project filtering, risk highlighting, and search. |
+| `package-graph.html` | **Interactive 3D package viewer** — open in a browser. One node per package, sized by class count; optional "Group by project" clustering. |
 | `class-graph.gexf` | Class-level graph for [Gephi](https://gephi.org/) — colour/size pre-set, every attribute (project, transactional, external, cyclic, inRisk, methods) available for partitioning and filtering. |
 | `call-graph.dot` | Graphviz DOT (method-level), **opt-in via `--dot`** — colour-coded by role (yellow = `@Transactional`, red = external call, orange = both). On large codebases the rendered SVG is an unreadable hairball; use the interactive exports instead. |
 | `analysis.json` | JSON report: graph summary, transaction risks, longest paths, cyclic clusters, package coupling, lock risks. |
 
-**Interactive exploration (recommended).** A method-level graph of a large monolith (10k+ nodes) is an unreadable hairball as a static SVG. The tool therefore also emits a **class-level collapse** (one node per class, edges weighted by call count) in two interactive forms:
+**Interactive exploration (recommended).** A method-level graph of a large monolith (10k+ nodes) is an unreadable hairball as a static SVG. The tool therefore collapses to **class level** and **package level**, each emitted as a self-contained 3D viewer:
 
 - `class-graph.html` — self-contained 3D viewer (WebGL), nothing to install; just open it.
+- `package-graph.html` — same viewer at package granularity; includes a "Group by project" toggle that clusters packages by module.
 - `class-graph.gexf` — load into Gephi for ForceAtlas2 layout, community detection, and rich attribute filtering.
 
 The static method-level DOT is opt-in (`--dot`), mainly useful on small modules:
@@ -236,7 +238,7 @@ dot -Tsvg reports/call-graph.dot -o reports/call-graph.svg
 ```
 src/main/java/com/codingful/carve/
 ├── spring/
-│   └── SpringMarkers.java          # all Spring/Jakarta FQN constants and detection logic
+│   └── SpringMarkers.java          # Spring/Jakarta FQN constants and detection logic
 ├── model/
 │   ├── MethodNode.java             # call-graph vertex: identity + Spring metadata
 │   ├── ExternalCallType.java       # HTTP, JDBC, JPA, MESSAGING, CACHE
@@ -244,18 +246,28 @@ src/main/java/com/codingful/carve/
 │   └── TransactionPropagation.java # mirrors Spring's Propagation enum
 ├── extractor/
 │   ├── CallGraphExtractor.java     # Spoon CtScanner: graph construction + CHA resolution
-│   ├── ProjectResolver.java        # maps source file paths to named projects (multi-project mode)
-│   └── UserDefinedMarkers.java     # loads vendor/custom FQN→ExternalCallType from .properties
+│   ├── ProjectResolver.java        # maps source file paths to named projects
+│   └── UserDefinedMarkers.java     # custom FQN→ExternalCallType from .properties
 ├── graph/
 │   └── CallGraph.java              # JGraphT wrapper with filtered views
 ├── analyzer/
 │   ├── TransactionAnalyzer.java    # BFS from @Transactional roots → risk detection
 │   ├── TransactionRisk.java        # risk record: root + call site + path
-│   └── CouplingAnalyzer.java       # SCC + package coupling metrics
+│   ├── PathAnalyzer.java           # longest simple path finder
+│   ├── CouplingAnalyzer.java       # SCC + package coupling metrics
+│   └── LockRiskAnalyzer.java       # REQUIRES_NEW nesting + cyclic @Transactional detection
 ├── reporter/
-│   ├── DotReporter.java            # Graphviz DOT output
-│   └── JsonReporter.java           # JSON report
-└── Carve.java             # CLI entry point + programmatic API
+│   ├── ClassGraphModel.java        # method→class collapse + attribute aggregation
+│   ├── PackageGraphModel.java      # class→package collapse
+│   ├── HtmlReporter.java           # class-graph.html (self-contained 3D WebGL viewer)
+│   ├── PackageHtmlReporter.java    # package-graph.html (self-contained 3D WebGL viewer)
+│   ├── GexfReporter.java           # class-graph.gexf for Gephi
+│   ├── DotReporter.java            # call-graph.dot (Graphviz, method-level)
+│   ├── JsonReporter.java           # analysis.json
+│   └── ConsoleReporter.java        # --print-* console output
+├── util/
+│   └── Fqns.java                   # shared FQN string utilities
+└── Carve.java                      # CLI entry point + programmatic API
 ```
 
 To add detection for a well-known library (e.g. a gRPC client), add its FQN to `SpringMarkers.java`. For project-specific vendor SDKs, use a `--markers` file instead — this keeps `SpringMarkers` focused on standard library patterns.
@@ -276,6 +288,10 @@ To add detection for a well-known library (e.g. a gRPC client), add its FQN to `
 **Spring AOP self-invocation:** `@Transactional` only takes effect on public methods called through the Spring proxy. A method calling `this.otherMethod()` bypasses the proxy and its annotation. The analyser cannot detect self-invocations and conservatively treats all calls as if the annotation is honoured.
 
 **Dynamic dispatch:** interface calls within the analysed source tree are resolved via CHA (see above). Calls that cross the source boundary — third-party interfaces, dynamic proxies, Spring AOP advice, or reflection — are not tracked.
+
+## License
+
+[AGPL 3.0](LICENSE). Compatible with the tool's dependencies: Spoon (CeCILL-C), JGraphT (LGPL), Jackson (Apache 2.0).
 
 ## Stack
 

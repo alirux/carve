@@ -146,11 +146,14 @@ public class PathAnalyzer {
             path.add(current);
             visited.add(current.getId());
 
-            current = callGraph.successors(current).stream()
-                .filter(appNodes::contains)
-                .filter(n -> !visited.contains(n.getId()))
-                .max(Comparator.comparingInt(n -> maxDepth.getOrDefault(n.getId(), 0)))
-                .orElse(null);
+            MethodNode best = null;
+            int bestDepth = -1;
+            for (MethodNode s : callGraph.successors(current)) {
+                if (!appNodes.contains(s) || visited.contains(s.getId())) continue;
+                int d = maxDepth.getOrDefault(s.getId(), 0);
+                if (d > bestDepth) { bestDepth = d; best = s; }
+            }
+            current = best;
         }
         return path;
     }

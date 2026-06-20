@@ -93,7 +93,7 @@ public class CouplingAnalyzer {
 
             if (!srcPkg.equals(tgtPkg)) {
                 // srcPkg depends on tgtPkg → efferent for src, afferent for tgt
-                builders.get(srcPkg).addEfherent(tgtPkg);
+                builders.get(srcPkg).addEfferent(tgtPkg);
                 builders.computeIfAbsent(tgtPkg, PackageCoupling.Builder::new)
                         .addAfferent(srcPkg);
             }
@@ -136,7 +136,7 @@ public class CouplingAnalyzer {
 
             Builder(String pkg) { this.pkg = pkg; }
 
-            Builder addEfherent(String p) { efferent.add(p); return this; }
+            Builder addEfferent(String p) { efferent.add(p); return this; }
             Builder addAfferent(String p) { afferent.add(p); return this; }
 
             PackageCoupling build() {

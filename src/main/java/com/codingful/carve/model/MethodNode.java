@@ -37,7 +37,7 @@ public final class MethodNode {
     private final String declaringTypeFqn;
 
     /** True when the method belongs to the source being analysed, false for library code. */
-    private boolean applicationCode;
+    private final boolean applicationCode;
 
     /** Named project this method belongs to; empty string in single-project mode. */
     private String projectName = "";

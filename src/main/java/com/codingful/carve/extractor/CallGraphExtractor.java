@@ -23,6 +23,7 @@ import com.codingful.carve.model.MethodNode;
 import com.codingful.carve.model.SpringComponentType;
 import com.codingful.carve.model.TransactionPropagation;
 import com.codingful.carve.spring.SpringMarkers;
+import com.codingful.carve.util.Fqns;
 import org.jgrapht.graph.DefaultEdge;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -219,6 +220,7 @@ public class CallGraphExtractor extends CtScanner {
             }
         }
         log.info("CHA resolved {} interface-to-implementation edges", resolved);
+        implementors.clear();
     }
 
     // -----------------------------------------------------------------------
@@ -228,7 +230,7 @@ public class CallGraphExtractor extends CtScanner {
     private MethodNode buildApplicationNode(CtMethod<?> method) {
         CtType<?> declaringType = method.getDeclaringType();
         String fqn   = declaringType != null ? declaringType.getQualifiedName() : "unknown";
-        String pkg   = packageOf(fqn);
+        String pkg   = Fqns.packageOf(fqn);
         String cls   = declaringType != null ? declaringType.getSimpleName() : "Unknown";
         String mName = method.getSimpleName();
         String sig   = buildSignature(method);
@@ -260,7 +262,7 @@ public class CallGraphExtractor extends CtScanner {
 
         CtTypeReference<?> declaringRef = exec.getDeclaringType();
         String fqn   = declaringRef != null ? declaringRef.getQualifiedName() : "unknown";
-        String pkg   = packageOf(fqn);
+        String pkg   = Fqns.packageOf(fqn);
         String cls   = declaringRef != null ? declaringRef.getSimpleName() : "Unknown";
         String mName = exec.getSimpleName();
         // Use the same signature format as buildApplicationNode so that call-site stubs
@@ -337,12 +339,10 @@ public class CallGraphExtractor extends CtScanner {
     // -----------------------------------------------------------------------
 
     private static String buildSignature(CtMethod<?> method) {
-        StringBuilder sb = new StringBuilder(method.getSimpleName()).append('(');
-        method.getParameters().forEach(p ->
-            sb.append(p.getType().getSimpleName()).append(','));
-        if (!method.getParameters().isEmpty()) sb.setLength(sb.length() - 1);
-        sb.append(')');
-        return sb.toString();
+        List<String> params = method.getParameters().stream()
+            .map(p -> p.getType().getSimpleName())
+            .toList();
+        return buildSig(method.getSimpleName(), params);
     }
 
     /**
@@ -352,17 +352,14 @@ public class CallGraphExtractor extends CtScanner {
      * target is an in-source type.
      */
     private static String buildTargetSignature(CtExecutableReference<?> exec) {
-        StringBuilder sb = new StringBuilder(exec.getSimpleName()).append('(');
-        var params = exec.getParameters();
-        params.forEach(p -> sb.append(p.getSimpleName()).append(','));
-        if (!params.isEmpty()) sb.setLength(sb.length() - 1);
-        sb.append(')');
-        return sb.toString();
+        List<String> params = exec.getParameters().stream()
+            .map(CtTypeReference::getSimpleName)
+            .toList();
+        return buildSig(exec.getSimpleName(), params);
     }
 
-    private static String packageOf(String fqn) {
-        int dot = fqn.lastIndexOf('.');
-        return dot < 0 ? "" : fqn.substring(0, dot);
+    private static String buildSig(String name, List<String> params) {
+        return params.isEmpty() ? name + "()" : name + "(" + String.join(",", params) + ")";
     }
 
     private static boolean isApplicationType(CtTypeReference<?> ref) {

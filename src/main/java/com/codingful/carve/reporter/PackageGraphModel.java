@@ -17,6 +17,8 @@
 
 package com.codingful.carve.reporter;
 
+import com.codingful.carve.util.Fqns;
+
 import java.util.*;
 
 /**
@@ -64,7 +66,7 @@ public final class PackageGraphModel {
         Map<String, PkgAcc> byPkg = new LinkedHashMap<>();
 
         for (ClassGraphModel.Node cn : classModel.nodes()) {
-            String pkg = packageOf(cn.id());
+            String pkg = pkgKey(cn.id());
             PkgAcc acc = byPkg.computeIfAbsent(pkg,
                 k -> new PkgAcc(shortLabel(k), cn.project()));
             acc.classes++;
@@ -80,8 +82,8 @@ public final class PackageGraphModel {
         // Aggregate class-level edges to package-level
         Map<String, Integer> edgeWeights = new LinkedHashMap<>();
         for (ClassGraphModel.Edge ce : classModel.edges()) {
-            String sp = packageOf(ce.source());
-            String tp = packageOf(ce.target());
+            String sp = pkgKey(ce.source());
+            String tp = pkgKey(ce.target());
             if (sp.equals(tp)) continue;
             edgeWeights.merge(sp + " " + tp, ce.weight(), Integer::sum);
         }
@@ -108,9 +110,9 @@ public final class PackageGraphModel {
     // Helpers
     // -----------------------------------------------------------------------
 
-    static String packageOf(String fqn) {
-        int i = fqn.lastIndexOf('.');
-        return i < 0 ? "(default)" : fqn.substring(0, i);
+    private static String pkgKey(String fqn) {
+        String p = Fqns.packageOf(fqn);
+        return p.isEmpty() ? "(default)" : p;
     }
 
     /** Returns the last two dot-separated segments as the display label. */
