@@ -1,12 +1,16 @@
-# carve
+<p align="center">
+  <img src="docs/logo.png" alt="carve logo" width="120">
+</p>
+
+# Carve
 
 Static analysis tool for Java/Spring codebases, built on top of [Spoon](https://spoon.gforge.inria.fr/) and [JGraphT](https://jgrapht.org/).
 
 Primary use case: supporting **modernisation of legacy Spring applications** by mapping dependencies and detecting patterns that make splitting into independent services difficult.
 
-> See **[FEATURES.md](FEATURES.md)** for a detailed explanation of every analysis — the algorithms used, why each matters for modernisation, and how to apply it.
-
 ## Analysis
+
+> See **[FEATURES.md](FEATURES.md)** for a detailed explanation of every analysis — the algorithms used, why each matters for modernisation, and how to apply it.
 
 ### Transaction risks
 
@@ -69,39 +73,6 @@ The analyser identifies two structural patterns that create conditions for datab
 **Cyclic `@Transactional` clusters.** When two or more `@Transactional` methods belong to the same call cycle (SCC), concurrent requests can acquire row locks in different orders, satisfying the classical conditions for deadlock. Resolving the cycle also removes the locking hazard.
 
 > Static analysis cannot determine which rows are locked at runtime. These findings are structural risk patterns to review, not confirmed bugs.
-
-## Build
-
-### Prerequisites
-
-- JDK 25 (other versions ≥ 21 work for compilation, but Spoon's Java 25 source support requires the matching toolchain)
-- No separate Gradle installation — the wrapper (`./gradlew`) downloads the right version automatically
-
-### Local build
-
-```bash
-./gradlew test          # compile + run all tests
-./gradlew shadowJar     # build fat-jar → build/libs/carve-<version>.jar
-./gradlew build         # both of the above
-```
-
-When built locally the JAR is versioned `dev-SNAPSHOT`. Pass `VERSION=x.y.z` to produce a named build:
-
-```bash
-VERSION=1.2.0 ./gradlew shadowJar
-# → build/libs/carve-1.2.0.jar
-```
-
-### Releases
-
-Releases are created by pushing a version tag. GitHub Actions builds the fat-jar and attaches it to the release automatically:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-The tag must follow the `v<semver>` format (e.g. `v1.0.0`, `v1.2.3`). The resulting JAR and release notes are published on the [Releases](../../releases) page.
 
 ## Run
 
@@ -257,6 +228,47 @@ java -jar carve.jar src/main/java --dot
 dot -Tsvg reports/call-graph.dot -o reports/call-graph.svg
 ```
 
+## Known limitations
+
+**Java version support:** Spoon 11.2.1 / ECJ 3.41.0 parses source code up to Java 23. Java 24/25 requires a future Spoon upgrade.
+
+**Spring AOP self-invocation:** `@Transactional` only takes effect on public methods called through the Spring proxy. A method calling `this.otherMethod()` bypasses the proxy and its annotation. The analyser cannot detect self-invocations and conservatively treats all calls as if the annotation is honoured.
+
+**Dynamic dispatch:** interface calls within the analysed source tree are resolved via CHA (see above). Calls that cross the source boundary — third-party interfaces, dynamic proxies, Spring AOP advice, or reflection — are not tracked.
+
+## Build
+
+### Prerequisites
+
+- JDK 25 (other versions ≥ 21 work for compilation, but Spoon's Java 25 source support requires the matching toolchain)
+- No separate Gradle installation — the wrapper (`./gradlew`) downloads the right version automatically
+
+### Local build
+
+```bash
+./gradlew test          # compile + run all tests
+./gradlew shadowJar     # build fat-jar → build/libs/carve-<version>.jar
+./gradlew build         # both of the above
+```
+
+When built locally the JAR is versioned `dev-SNAPSHOT`. Pass `VERSION=x.y.z` to produce a named build:
+
+```bash
+VERSION=1.2.0 ./gradlew shadowJar
+# → build/libs/carve-1.2.0.jar
+```
+
+### Releases
+
+Releases are created by pushing a version tag. GitHub Actions builds the fat-jar and attaches it to the release automatically:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The tag must follow the `v<semver>` format (e.g. `v1.0.0`, `v1.2.3`). The resulting JAR and release notes are published on the [Releases](../../releases) page.
+
 ## Architecture
 
 ```
@@ -305,18 +317,6 @@ To add detection for a well-known library (e.g. a gRPC client), add its FQN to `
 | JPA / Hibernate | `EntityManager` (javax + jakarta) | `JPA` |
 | Spring Data | `JpaRepository`, `CrudRepository`, … | `JPA` |
 
-## Known limitations
-
-**Java version support:** Spoon 11.2.1 / ECJ 3.41.0 parses source code up to Java 23. Java 24/25 requires a future Spoon upgrade.
-
-**Spring AOP self-invocation:** `@Transactional` only takes effect on public methods called through the Spring proxy. A method calling `this.otherMethod()` bypasses the proxy and its annotation. The analyser cannot detect self-invocations and conservatively treats all calls as if the annotation is honoured.
-
-**Dynamic dispatch:** interface calls within the analysed source tree are resolved via CHA (see above). Calls that cross the source boundary — third-party interfaces, dynamic proxies, Spring AOP advice, or reflection — are not tracked.
-
-## License
-
-[AGPL 3.0](LICENSE). Compatible with the tool's dependencies: Spoon (CeCILL-C), JGraphT (LGPL), Jackson (Apache 2.0).
-
 ## Stack
 
 | Dependency | Version | Role |
@@ -327,3 +327,7 @@ To add detection for a well-known library (e.g. a gRPC client), add its FQN to `
 | [SLF4J](https://www.slf4j.org/) + Logback | 2.0.13 / 1.5.6 | Logging |
 | [JUnit](https://junit.org/) + AssertJ | 6.0.3 / 3.27.7 | Testing |
 | [Shadow](https://gradleup.com/shadow/) | 9.0.0 | Fat-jar packaging |
+
+## License
+
+[AGPL 3.0](LICENSE). Compatible with the tool's dependencies: Spoon (CeCILL-C), JGraphT (LGPL), Jackson (Apache 2.0).
