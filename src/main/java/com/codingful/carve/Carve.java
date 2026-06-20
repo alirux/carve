@@ -256,9 +256,10 @@ public class Carve {
         log.info("Class model collapsed: {} classes, {} edges  [{}]",
             classModel.nodes().size(), classModel.edges().size(), elapsed(tCollapse));
 
-        PackageGraphModel pkgModel = PackageGraphModel.collapse(classModel);
-        log.info("Package model collapsed: {} packages, {} edges",
-            pkgModel.nodes().size(), pkgModel.edges().size());
+        var hotspotsByPkg = CouplingAnalyzer.classifyHotspots(r.coupling().values()).byPackage();
+        PackageGraphModel pkgModel = PackageGraphModel.collapse(classModel, hotspotsByPkg);
+        log.info("Package model collapsed: {} packages, {} edges ({} hotspots)",
+            pkgModel.nodes().size(), pkgModel.edges().size(), hotspotsByPkg.size());
 
         List<CompletableFuture<Void>> reportTasks = new ArrayList<>();
         long tReports = System.nanoTime();

@@ -17,6 +17,7 @@
 
 package com.codingful.carve.reporter;
 
+import com.codingful.carve.analyzer.CouplingAnalyzer.PackageHotspot;
 import com.codingful.carve.util.Fqns;
 
 import java.util.*;
@@ -39,7 +40,11 @@ public final class PackageGraphModel {
         boolean external,
         boolean cyclic,
         boolean inRisk,
-        boolean inLockRisk
+        boolean inLockRisk,
+        /** Modernisation archetype key (e.g. {@code "unstableHubs"}) or {@code null} if not a hotspot. */
+        String archetype,
+        /** Hotspot ranking score within its archetype; {@code 0} when not a hotspot. */
+        double score
     ) {}
 
     public record Edge(String source, String target, int weight) {}
@@ -63,6 +68,18 @@ public final class PackageGraphModel {
     // -----------------------------------------------------------------------
 
     public static PackageGraphModel collapse(ClassGraphModel classModel) {
+        return collapse(classModel, Map.of());
+    }
+
+    /**
+     * Collapses the class graph to package level, tagging each package with its
+     * modernisation {@link PackageHotspot} (if any) so the viewer can highlight
+     * the {@code unstableHubs}, {@code extractionCandidates} and {@code stableCores}.
+     *
+     * @param hotspotsByPackage package name → its hotspot classification
+     */
+    public static PackageGraphModel collapse(ClassGraphModel classModel,
+                                             Map<String, PackageHotspot> hotspotsByPackage) {
         Map<String, PkgAcc> byPkg = new LinkedHashMap<>();
 
         for (ClassGraphModel.Node cn : classModel.nodes()) {
@@ -93,8 +110,12 @@ public final class PackageGraphModel {
             String dominant = acc.projectCounts.entrySet().stream()
                 .max(Map.Entry.comparingByValue())
                 .map(Map.Entry::getKey).orElse("");
+            PackageHotspot hotspot = hotspotsByPackage.get(pkg);
+            String archetype = hotspot != null ? hotspot.archetype().jsonKey() : null;
+            double score     = hotspot != null ? hotspot.score() : 0.0;
             nodes.add(new Node(pkg, acc.label, dominant, acc.classes,
-                acc.transactional, acc.external, acc.cyclic, acc.inRisk, acc.inLockRisk));
+                acc.transactional, acc.external, acc.cyclic, acc.inRisk, acc.inLockRisk,
+                archetype, score));
         });
 
         List<Edge> edges = new ArrayList<>(edgeWeights.size());

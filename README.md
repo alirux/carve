@@ -65,6 +65,16 @@ The concept of measuring afferent/efferent coupling originates in the structured
 
 Packages with **high instability and few afferent dependencies** are typically the safest starting point for service extraction. Packages with **low instability** are the shared kernel — stabilise them as internal APIs or extract them last.
 
+On top of the raw numbers the analyser classifies each *application* package into one of three actionable modernisation archetypes, reported under `packageCoupling.hotspots`:
+
+| Archetype | Shape | Principle | Action |
+|---|---|---|---|
+| **`unstableHubs`** | high `Ca` + high `I` | Stable Dependencies Principle violation | Bottleneck — decompose first |
+| **`extractionCandidates`** | low `Ca` + high `I` | Low blast radius | Peel off as a service first |
+| **`stableCores`** | high `Ca` + low `I` | Shared kernel | Harden behind ports, extract last |
+
+Each entry has a `score` ranking it within its archetype. See [FEATURES.md §5b](FEATURES.md#5b-package-instability) for thresholds and the full scoring formulas.
+
 ---
 
 ### DB lock and deadlock risk patterns
@@ -214,15 +224,15 @@ java -jar carve.jar src/main/java --markers markers/my-project.properties
 | File | Description |
 |---|---|
 | `class-graph.html` | **Interactive 3D class viewer** — open in a browser. One node per class; rotate/zoom/pan, per-project filtering, risk highlighting, and search. |
-| `package-graph.html` | **Interactive 3D package viewer** — open in a browser. One node per package, sized by class count; optional "Group by project" clustering. |
+| `package-graph.html` | **Interactive 3D package viewer** — open in a browser. One node per package, sized by class count; optional "Group by project" clustering; **modernisation hotspots** (unstable hubs / extraction candidates / stable cores) colour-coded with highlight toggle and "only hotspots" filter. |
 | `class-graph.gexf` | Class-level graph for [Gephi](https://gephi.org/) — colour/size pre-set, every attribute (project, transactional, external, cyclic, inRisk, methods) available for partitioning and filtering. |
 | `call-graph.dot` | Graphviz DOT (method-level), **opt-in via `--dot`** — colour-coded by role (yellow = `@Transactional`, red = external call, orange = both). On large codebases the rendered SVG is an unreadable hairball; use the interactive exports instead. |
-| `analysis.json` | JSON report: graph summary, transaction risks, longest paths, cyclic clusters, package coupling, lock risks. |
+| `analysis.json` | JSON report: graph summary, transaction risks, longest paths, cyclic clusters, package coupling (flat profile + modernisation `hotspots`), lock risks. |
 
 **Interactive exploration (recommended).** A method-level graph of a large monolith (10k+ nodes) is an unreadable hairball as a static SVG. The tool therefore collapses to **class level** and **package level**, each emitted as a self-contained 3D viewer:
 
 - `class-graph.html` — self-contained 3D viewer (WebGL), nothing to install; just open it.
-- `package-graph.html` — same viewer at package granularity; includes a "Group by project" toggle that clusters packages by module.
+- `package-graph.html` — same viewer at package granularity; includes a "Group by project" toggle that clusters packages by module, plus colour-coded **modernisation hotspots** with a "Highlight hotspots" toggle and an "only hotspots" filter.
 - `class-graph.gexf` — load into Gephi for ForceAtlas2 layout, community detection, and rich attribute filtering.
 
 <p align="center">

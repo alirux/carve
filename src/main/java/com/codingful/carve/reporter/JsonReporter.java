@@ -68,11 +68,7 @@ public class JsonReporter {
         report.put("transactionRisks", risks.stream().map(this::riskToMap).toList());
         report.put("longestPaths",     longestPaths.stream().map(this::pathToMap).toList());
         report.put("cyclicClusters",   cyclicClusters.stream().map(this::clusterToMap).toList());
-        report.put("packageCoupling",  coupling.values().stream()
-                                           .map(this::couplingToMap)
-                                           .sorted(java.util.Comparator.comparingDouble(
-                                               m -> -((double) ((Map<?,?>) m).get("instability"))))
-                                           .toList());
+        report.put("packageCoupling",  buildPackageCoupling(coupling));
         report.put("lockRisks", Map.of(
             "nestedRequiresNew",   nestedTxRisks.stream().map(this::nestedTxRiskToMap).toList(),
             "cyclicTransactional", cyclicTxRisks.stream().map(this::cyclicTxRiskToMap).toList()
@@ -152,14 +148,53 @@ public class JsonReporter {
         );
     }
 
+    /**
+     * Builds the {@code packageCoupling} section: the flat {@code packages}
+     * list (every package, sorted by descending instability) plus a
+     * {@code hotspots} object grouping application packages into the three
+     * modernisation archetypes.
+     */
+    private Map<String, Object> buildPackageCoupling(
+            Map<String, CouplingAnalyzer.PackageCoupling> coupling) {
+
+        var packages = coupling.values().stream()
+            .map(this::couplingToMap)
+            .sorted(java.util.Comparator.comparingDouble(
+                m -> -((double) ((Map<?,?>) m).get("instability"))))
+            .toList();
+
+        var hotspots = CouplingAnalyzer.classifyHotspots(coupling.values());
+
+        var hotspotsMap = new java.util.LinkedHashMap<String, Object>();
+        hotspotsMap.put("unstableHubs",         hotspots.unstableHubs().stream().map(this::hotspotToMap).toList());
+        hotspotsMap.put("extractionCandidates", hotspots.extractionCandidates().stream().map(this::hotspotToMap).toList());
+        hotspotsMap.put("stableCores",          hotspots.stableCores().stream().map(this::hotspotToMap).toList());
+
+        var section = new java.util.LinkedHashMap<String, Object>();
+        section.put("hotspots", hotspotsMap);
+        section.put("packages", packages);
+        return section;
+    }
+
     private Map<String, Object> couplingToMap(CouplingAnalyzer.PackageCoupling c) {
         return Map.of(
             "package",              c.packageName(),
+            "applicationCode",      c.applicationCode(),
             "efferentCe",           c.ce(),
             "afferentCa",           c.ca(),
             "instability",          Math.round(c.instability() * 100.0) / 100.0,
             "efferentDependencies", c.efferentDependencies(),
             "afferentDependencies", c.afferentDependencies()
+        );
+    }
+
+    private Map<String, Object> hotspotToMap(CouplingAnalyzer.PackageHotspot h) {
+        return Map.of(
+            "package",     h.packageName(),
+            "afferentCa",  h.afferentCa(),
+            "efferentCe",  h.efferentCe(),
+            "instability", Math.round(h.instability() * 100.0) / 100.0,
+            "score",       Math.round(h.score() * 100.0) / 100.0
         );
     }
 }

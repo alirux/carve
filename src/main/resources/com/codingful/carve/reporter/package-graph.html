@@ -59,6 +59,10 @@
     <label><input type="checkbox" id="onlyLockRisk"> Only lock risk packages</label>
     <label><input type="checkbox" id="hlRisk" checked> Highlight risks (red)</label>
   </div>
+  <div class="sec" id="hotspot-controls">
+    <label><input type="checkbox" id="onlyHotspot"> Only modernisation hotspots</label>
+    <label><input type="checkbox" id="hlHotspot" checked> Highlight hotspots</label>
+  </div>
   <div class="sec">
     <label><input type="checkbox" id="groupProj"> Group by project</label>
   </div>
@@ -94,11 +98,24 @@ function roleColor(n) {
   return '#9ab4dc';
 }
 
+// Modernisation hotspot archetypes (see analysis.json → packageCoupling.hotspots)
+const ARCHETYPES = {
+  unstableHubs:         { color: '#a371f7', label: 'unstable hub' },
+  extractionCandidates: { color: '#3fb950', label: 'extraction candidate' },
+  stableCores:          { color: '#39c5cf', label: 'stable core' }
+};
+const HAS_HOTSPOTS = DATA.nodes.some(n => n.archetype);
+function archColor(n) {
+  const a = ARCHETYPES[n.archetype];
+  return a ? a.color : null;
+}
+
 let selectedNode = null;
 let dblTimer = null;
 
 function nodeColor(n) {
   if (n === selectedNode) return '#ffffff';
+  if (document.getElementById('hlHotspot').checked && n.archetype) return archColor(n);
   if (document.getElementById('hlRisk').checked && (n.inRisk || n.inLockRisk)) return '#ff3b3b';
   return DATA.multiProject ? (projColor[n.project] || '#9ab4dc') : roleColor(n);
 }
@@ -119,7 +136,7 @@ const Graph = ForceGraph3D()(elGraph)
   .nodeLabel(n => `<div style="background:#161b22;padding:4px 8px;border-radius:4px;border:1px solid #30363d">
       <b>${n.label}</b><br>
       <span style="color:#8b949e">${n.id}${DATA.multiProject?' · '+(n.project||'—'):''}</span><br>
-      ${n.classes} class${n.classes!==1?'es':''}${n.transactional?' · @Transactional':''}${n.external?' · external':''}${n.cyclic?' · cyclic':''}${n.inRisk?' · risk':''}${n.inLockRisk?' · lock risk':''}</div>`)
+      ${n.classes} class${n.classes!==1?'es':''}${n.transactional?' · @Transactional':''}${n.external?' · external':''}${n.cyclic?' · cyclic':''}${n.inRisk?' · risk':''}${n.inLockRisk?' · lock risk':''}${n.archetype?`<br><span style="color:${archColor(n)}">◆ ${ARCHETYPES[n.archetype].label} · score ${n.score.toFixed(2)}</span>`:''}</div>`)
   .nodeColor(nodeColor)
   .nodeRelSize(4)
   .nodeVal(nodeVal)
@@ -265,10 +282,12 @@ if (DATA.multiProject) {
 function apply() {
   const onlyRisk     = document.getElementById('onlyRisk').checked;
   const onlyLockRisk = document.getElementById('onlyLockRisk').checked;
+  const onlyHotspot  = document.getElementById('onlyHotspot').checked;
   const nodes = DATA.nodes.filter(n =>
     active.has(n.project) &&
     (!onlyRisk     || n.inRisk) &&
-    (!onlyLockRisk || n.inLockRisk));
+    (!onlyLockRisk || n.inLockRisk) &&
+    (!onlyHotspot  || n.archetype));
   const ids = new Set(nodes.map(n => n.id));
   const links = DATA.links.filter(l =>
     ids.has(typeof l.source==='object'?l.source.id:l.source) &&
@@ -279,7 +298,9 @@ function apply() {
 }
 document.getElementById('onlyRisk').addEventListener('change', apply);
 document.getElementById('onlyLockRisk').addEventListener('change', apply);
+document.getElementById('onlyHotspot').addEventListener('change', apply);
 document.getElementById('hlRisk').addEventListener('change', () => Graph.nodeColor(nodeColor));
+document.getElementById('hlHotspot').addEventListener('change', () => Graph.nodeColor(nodeColor));
 document.getElementById('groupProj').addEventListener('change', e => {
   groupProject = e.target.checked;
   Graph.nodeColor(nodeColor);
@@ -374,6 +395,9 @@ function showNodeDetail(node) {
       <tr><td>Cyclic</td><td>${node.cyclic ? '✓' : '—'}</td></tr>
       <tr><td>In risk</td><td>${node.inRisk ? '⚠ yes' : '—'}</td></tr>
       <tr><td>Lock risk</td><td>${node.inLockRisk ? '⚠ yes' : '—'}</td></tr>
+      <tr><td>Hotspot</td><td>${node.archetype
+        ? `<span style="color:${archColor(node)}">◆ ${ARCHETYPES[node.archetype].label}</span> · score ${node.score.toFixed(2)}`
+        : '—'}</td></tr>
     </table>`;
   document.getElementById('node-info').style.display = 'block';
 }
@@ -384,6 +408,12 @@ document.getElementById('node-clear').addEventListener('click', () => {
 });
 
 // ---- legend ------------------------------------------------------
+function hotspotLegend() {
+  if (!HAS_HOTSPOTS) return '';
+  const rows = Object.values(ARCHETYPES).map(a =>
+    `<label><span class="dot" style="background:${a.color}"></span>${a.label}</label>`).join('');
+  return `<div style="margin-top:6px"><b>◆ Modernisation hotspots</b>${rows}</div>`;
+}
 function updateLegend() {
   const legend = document.getElementById('legend');
   if (groupProject) {
@@ -401,7 +431,9 @@ function updateLegend() {
        <label><span class="dot" style="background:#56b4e9"></span>cyclic</label>
        <label><span class="dot" style="background:#9ab4dc"></span>plain</label>`;
   }
+  legend.innerHTML += hotspotLegend();
 }
+if (!HAS_HOTSPOTS) document.getElementById('hotspot-controls').style.display = 'none';
 updateLegend();
 
 apply();

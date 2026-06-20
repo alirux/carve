@@ -259,7 +259,24 @@ Instability tells you the **order** in which to attack the monolith. Unstable le
 
 #### How to use it
 
-Package coupling is written to `analysis.json` under `packageCoupling`, sorted by descending instability. Start service-extraction planning from the top of that list (high `I`, low `Ca`).
+Package coupling is written to `analysis.json` under `packageCoupling`. The section has two parts:
+
+- **`packages`** — the flat profile of every package (`Ca`, `Ce`, `instability`, the dependency sets, and an `applicationCode` flag), sorted by descending instability.
+- **`hotspots`** — the *actionable* view: only application packages, classified into three modernisation archetypes (library/JDK packages are excluded, being stable by definition). Each entry carries a `score` ranking it **within** its archetype, and the three lists are sorted by descending score.
+
+The archetypes turn the raw `Ca`/`Ce`/`I` triple into a decision:
+
+| Archetype (JSON key) | Design principle | Shape | What to do | `score` |
+|---|---|---|---|---|
+| **`unstableHubs`** | *Stable Dependencies Principle* violation — what many depend on should be stable, but this isn't | high `Ca` **and** high `I` | The architectural bottleneck. Untangle it **first** (split by sub-domain, invert dependencies) — nothing extracts cleanly until it's broken up. | `Ca · I` |
+| **`extractionCandidates`** | *Low blast radius* — few depend on it, so removing it breaks little | low `Ca`, high `I`, substantial `Ce` | The safest **first** packages to peel off as a separate service/module. | `Ce · I` |
+| **`stableCores`** | *Stable abstractions / shared kernel* — heavily depended on and already stable | high `Ca` **and** low `I` | Protect behind explicit ports/interfaces; extract last, don't rewrite. | `Ca · (1 − I)` |
+
+The `score` is a **relative** ranking metric, not a normalised 0–1 value: it scales with `Ca`/`Ce`, which have no upper bound, so the score is **unbounded above** (a bigger, more entangled package simply scores higher). It is only ever compared *within* one archetype. Given the classification thresholds below, the **effective minimum is `3.5`** for all three archetypes (`5 × 0.70`); anything classified scores at least that.
+
+Packages sitting near the "main sequence" (balanced `Ca`/`Ce`, e.g. a domain model with `I ≈ 0.5`) are intentionally left unclassified — they belong to no single archetype. The classification thresholds (`Ca ≥ 5` for a hub, `I ≥ 0.70` for unstable, `Ca ≤ 3` for a leaf, `I ≤ 0.30` for stable) live as named constants in `CouplingAnalyzer`.
+
+A typical reading: start service-extraction from the top of `extractionCandidates`, schedule the `unstableHubs` for decomposition, and harden the `stableCores` as internal contracts.
 
 ---
 
@@ -413,6 +430,8 @@ One node per Java package, sized proportionally to the number of classes it cont
 
 **`package-graph.html`** — same 3D viewer technology as `class-graph.html`. Includes a **"Group by project" checkbox** that clusters packages by module using a secondary spring layout, making cross-project dependencies immediately visible.
 
+It also surfaces the **modernisation hotspots** (see [§5b](#5b-package-instability)): each package classified as an `unstableHub`, `extractionCandidate` or `stableCore` is drawn in a dedicated colour, with a **"Highlight hotspots"** toggle (on by default, works in both role- and project-colour modes) and an **"Only modernisation hotspots"** filter. Hovering or selecting a package shows its archetype and `score`. The controls and legend appear only when the graph actually contains hotspots.
+
 Why these two levels: for an architectural conversation — "which modules depend on which, where are the cycles" — the package is the right starting unit, and the class level shows the next layer of detail. Method-level specifics live in the console reports and `analysis.json`.
 
 ### `call-graph.dot` (Graphviz, method-level — opt-in via `--dot`)
@@ -446,7 +465,7 @@ Machine-readable report with six top-level sections:
 | `transactionRisks` | Each risk: transactional root, external-call site, call types, full path (node ids) |
 | `longestPaths` | Top 10 chains: depth + ordered node id list |
 | `cyclicClusters` | Each SCC with size > 1: member count + sorted node id list |
-| `packageCoupling` | Per-package Ca, Ce, instability, sorted by descending instability |
+| `packageCoupling` | Object with `packages` (flat per-package Ca, Ce, instability, dependency sets, `applicationCode`, sorted by descending instability) and `hotspots` (application packages grouped into `unstableHubs`, `extractionCandidates`, `stableCores`, each with a per-archetype `score`) |
 | `lockRisks` | Two sub-arrays: `nestedRequiresNew` (outer root + REQUIRES_NEW site + path) and `cyclicTransactional` (cluster members + transactional subset) |
 
 Feed it into dashboards, diff across releases to track whether risks go up or down, or use it as a CI gate.

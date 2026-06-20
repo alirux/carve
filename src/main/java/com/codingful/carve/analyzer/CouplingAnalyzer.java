@@ -89,18 +89,124 @@ public class CouplingAnalyzer {
             String srcPkg = source.getPackageName();
             String tgtPkg = target.getPackageName();
 
-            builders.computeIfAbsent(srcPkg, PackageCoupling.Builder::new);
+            // The source is application code, so its package is too.
+            builders.computeIfAbsent(srcPkg, PackageCoupling.Builder::new)
+                    .markApplicationCode();
 
             if (!srcPkg.equals(tgtPkg)) {
                 // srcPkg depends on tgtPkg → efferent for src, afferent for tgt
                 builders.get(srcPkg).addEfferent(tgtPkg);
-                builders.computeIfAbsent(tgtPkg, PackageCoupling.Builder::new)
+                var tgtBuilder = builders.computeIfAbsent(tgtPkg, PackageCoupling.Builder::new)
                         .addAfferent(srcPkg);
+                if (target.isApplicationCode()) tgtBuilder.markApplicationCode();
             }
         }
 
         return builders.entrySet().stream()
             .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().build()));
+    }
+
+    // -----------------------------------------------------------------------
+    // Coupling hotspots — actionable classification for modernisation
+    // -----------------------------------------------------------------------
+
+    /**
+     * Thresholds that turn raw Ca/Ce/I numbers into the three modernisation
+     * archetypes. They are deliberately conservative so that only clear-cut
+     * cases are flagged; packages sitting near the "main sequence" (balanced
+     * Ca/Ce) are intentionally left unclassified.
+     */
+    public static final int    HUB_MIN_CA               = 5;
+    public static final double UNSTABLE_MIN_INSTABILITY = 0.70;
+    public static final int    LEAF_MAX_CA              = 3;
+    public static final int    EXTRACTABLE_MIN_CE       = 5;
+    public static final double STABLE_MAX_INSTABILITY   = 0.30;
+
+    /**
+     * Classifies every application package into at most one modernisation
+     * archetype (see {@link Archetype}). Library/JDK packages are excluded —
+     * they are stable by definition and are never refactoring targets.
+     *
+     * <p>The three archetypes are mutually exclusive by construction: an
+     * {@code UNSTABLE_HUB} requires high instability while a {@code STABLE_CORE}
+     * requires low instability, and an {@code EXTRACTION_CANDIDATE} requires low
+     * afferent coupling while the two hub-shaped archetypes require high.</p>
+     */
+    public static CouplingHotspots classifyHotspots(Collection<PackageCoupling> packages) {
+        List<PackageHotspot> unstableHubs          = new ArrayList<>();
+        List<PackageHotspot> extractionCandidates  = new ArrayList<>();
+        List<PackageHotspot> stableCores           = new ArrayList<>();
+
+        for (PackageCoupling p : packages) {
+            if (!p.applicationCode()) continue;
+
+            Archetype archetype = classify(p);
+            if (archetype == null) continue;
+
+            (switch (archetype) {
+                case UNSTABLE_HUB        -> unstableHubs;
+                case EXTRACTION_CANDIDATE -> extractionCandidates;
+                case STABLE_CORE         -> stableCores;
+            }).add(PackageHotspot.of(p, archetype));
+        }
+
+        Comparator<PackageHotspot> byScore =
+            Comparator.comparingDouble(PackageHotspot::score).reversed();
+        unstableHubs.sort(byScore);
+        extractionCandidates.sort(byScore);
+        stableCores.sort(byScore);
+
+        return new CouplingHotspots(unstableHubs, extractionCandidates, stableCores);
+    }
+
+    private static Archetype classify(PackageCoupling p) {
+        int    ca = p.ca();
+        int    ce = p.ce();
+        double i  = p.instability();
+
+        if (ca >= HUB_MIN_CA && i >= UNSTABLE_MIN_INSTABILITY) {
+            return Archetype.UNSTABLE_HUB;
+        }
+        if (ca <= LEAF_MAX_CA && i >= UNSTABLE_MIN_INSTABILITY && ce >= EXTRACTABLE_MIN_CE) {
+            return Archetype.EXTRACTION_CANDIDATE;
+        }
+        if (ca >= HUB_MIN_CA && i <= STABLE_MAX_INSTABILITY) {
+            return Archetype.STABLE_CORE;
+        }
+        return null;
+    }
+
+    /**
+     * The three modernisation archetypes derived from the Ca/Ce/instability
+     * triple. Each carries the design principle it embodies and the JSON key
+     * under which it is reported.
+     */
+    public enum Archetype {
+        /**
+         * High afferent coupling <i>and</i> high instability: many packages
+         * depend on it, yet it depends on many in turn — a violation of the
+         * Stable Dependencies Principle and the primary bottleneck to untangle.
+         */
+        UNSTABLE_HUB("unstableHubs"),
+        /**
+         * Low afferent coupling but high instability with a substantial
+         * efferent surface: few depend on it, so it can be peeled off as a
+         * separate service/module with a low blast radius.
+         */
+        EXTRACTION_CANDIDATE("extractionCandidates"),
+        /**
+         * High afferent coupling and low instability: heavily depended on and
+         * already stable — a shared kernel to protect behind explicit ports
+         * rather than rewrite.
+         */
+        STABLE_CORE("stableCores");
+
+        private final String jsonKey;
+
+        Archetype(String jsonKey) { this.jsonKey = jsonKey; }
+
+        /** Key under which packages of this archetype are grouped in the JSON report. */
+        public String jsonKey() { return jsonKey; }
     }
 
     // -----------------------------------------------------------------------
@@ -112,7 +218,9 @@ public class CouplingAnalyzer {
         /** Packages that this package depends on (outgoing). */
         Set<String> efferentDependencies,
         /** Packages that depend on this package (incoming). */
-        Set<String> afferentDependencies
+        Set<String> afferentDependencies,
+        /** {@code true} when the package belongs to the analysed source (not a library/JDK stub). */
+        boolean applicationCode
     ) {
         /** Ce — efferent coupling count */
         public int ce() { return efferentDependencies.size(); }
@@ -133,15 +241,83 @@ public class CouplingAnalyzer {
             private final String pkg;
             private final Set<String> efferent = new HashSet<>();
             private final Set<String> afferent  = new HashSet<>();
+            private boolean applicationCode = false;
 
             Builder(String pkg) { this.pkg = pkg; }
 
             Builder addEfferent(String p) { efferent.add(p); return this; }
             Builder addAfferent(String p) { afferent.add(p); return this; }
+            Builder markApplicationCode() { this.applicationCode = true; return this; }
 
             PackageCoupling build() {
-                return new PackageCoupling(pkg, Set.copyOf(efferent), Set.copyOf(afferent));
+                return new PackageCoupling(
+                    pkg, Set.copyOf(efferent), Set.copyOf(afferent), applicationCode);
             }
+        }
+    }
+
+    /**
+     * A single application package flagged as a modernisation hotspot, together
+     * with the {@link Archetype} it was classified as and a {@code score} that
+     * ranks its importance <i>within</i> that archetype (higher = more important).
+     *
+     * <p>The score is archetype-specific so the three lists can each be sorted
+     * by the metric that matters for that principle:</p>
+     * <ul>
+     *   <li>{@code UNSTABLE_HUB} → {@code Ca · I} (bottleneck severity)</li>
+     *   <li>{@code EXTRACTION_CANDIDATE} → {@code Ce · I} (extractable surface × unstableness)</li>
+     *   <li>{@code STABLE_CORE} → {@code Ca · (1 − I)} (load-bearing stability)</li>
+     * </ul>
+     *
+     * <p>The score is a <i>relative</i> ranking, not a normalised 0–1 value: it
+     * scales with {@code Ca}/{@code Ce} and is therefore <b>unbounded above</b>,
+     * and is only meaningful when compared within the same archetype. Given the
+     * classification thresholds the effective minimum is {@code 3.5}
+     * ({@code HUB_MIN_CA × UNSTABLE_MIN_INSTABILITY}) for every archetype.</p>
+     */
+    public record PackageHotspot(
+        String packageName,
+        Archetype archetype,
+        int afferentCa,
+        int efferentCe,
+        double instability,
+        double score
+    ) {
+        static PackageHotspot of(PackageCoupling p, Archetype archetype) {
+            double i = p.instability();
+            double score = switch (archetype) {
+                case UNSTABLE_HUB        -> p.ca() * i;
+                case EXTRACTION_CANDIDATE -> p.ce() * i;
+                case STABLE_CORE         -> p.ca() * (1.0 - i);
+            };
+            return new PackageHotspot(p.packageName(), archetype, p.ca(), p.ce(), i, score);
+        }
+    }
+
+    /**
+     * The actionable view over package coupling: application packages grouped
+     * into the three modernisation archetypes, each list sorted by descending
+     * {@link PackageHotspot#score()}.
+     */
+    public record CouplingHotspots(
+        List<PackageHotspot> unstableHubs,
+        List<PackageHotspot> extractionCandidates,
+        List<PackageHotspot> stableCores
+    ) {
+        /** All classified hotspots across the three archetypes, in no particular order. */
+        public List<PackageHotspot> all() {
+            List<PackageHotspot> all = new ArrayList<>(
+                unstableHubs.size() + extractionCandidates.size() + stableCores.size());
+            all.addAll(unstableHubs);
+            all.addAll(extractionCandidates);
+            all.addAll(stableCores);
+            return all;
+        }
+
+        /** Index of {@link PackageHotspot} by package name, for graph tagging. */
+        public Map<String, PackageHotspot> byPackage() {
+            return all().stream().collect(Collectors.toMap(
+                PackageHotspot::packageName, h -> h, (a, b) -> a, LinkedHashMap::new));
         }
     }
 }
