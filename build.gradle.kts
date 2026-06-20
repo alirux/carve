@@ -3,6 +3,7 @@
 plugins {
     java
     application
+    jacoco
     id("com.gradleup.shadow") version "9.0.0"
 }
 
@@ -49,6 +50,14 @@ application {
 
 tasks.test {
     useJUnitPlatform()
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    reports {
+        xml.required = true
+    }
 }
 
 tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {

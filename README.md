@@ -4,6 +4,9 @@
 
 # Carve
 
+![CI](https://github.com/alirux/carve/actions/workflows/ci.yml/badge.svg)
+[![Coverage](https://codecov.io/gh/alirux/carve/branch/main/graph/badge.svg)](https://codecov.io/gh/alirux/carve)
+
 Static analysis tool for Java/Spring codebases, built on top of [Spoon](https://spoon.gforge.inria.fr/) and [JGraphT](https://jgrapht.org/).
 
 Primary use case: supporting **modernisation of legacy Spring applications** by mapping dependencies and detecting patterns that make splitting into independent services difficult.
