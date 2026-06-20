@@ -225,6 +225,16 @@ java -jar carve.jar src/main/java --markers markers/my-project.properties
 - `package-graph.html` — same viewer at package granularity; includes a "Group by project" toggle that clusters packages by module.
 - `class-graph.gexf` — load into Gephi for ForceAtlas2 layout, community detection, and rich attribute filtering.
 
+<p align="center">
+  <img src="docs/Class Graph grouped by package.jpg" alt="class-graph.html — classes grouped by package" width="720">
+  <br><em>class-graph.html — classes coloured by package, risks highlighted in red</em>
+</p>
+
+<p align="center">
+  <img src="docs/Package Graph grouped by project.jpg" alt="package-graph.html — packages grouped by project" width="720">
+  <br><em>package-graph.html — packages sized by class count, grouped by project</em>
+</p>
+
 The static method-level DOT is opt-in (`--dot`), mainly useful on small modules:
 ```bash
 java -jar carve.jar src/main/java --dot
