@@ -101,7 +101,15 @@ public class Carve {
     // -----------------------------------------------------------------------
 
     public static void main(String[] args) throws IOException {
-        CarveConfig config = parseArgs(args);
+        CarveConfig config;
+        try {
+            config = parseArgs(args);
+        } catch (UsageException e) {
+            System.err.println(e.getMessage());
+            System.err.println(USAGE);
+            System.exit(1);
+            return; // unreachable; satisfies definite-assignment of config below
+        }
         long t0 = System.nanoTime();
 
         CtModel   model  = buildSpoonModel(config);
@@ -115,13 +123,12 @@ public class Carve {
     // Pipeline phases
     // -----------------------------------------------------------------------
 
-    private static CarveConfig parseArgs(String[] args) {
+    static CarveConfig parseArgs(String[] args) {
         List<String> sourceArgs = argValues(args, "--source");
         boolean hasPositionalSource = args.length > 0 && !args[0].startsWith("-");
 
         if (sourceArgs.isEmpty() && !hasPositionalSource) {
-            System.err.println(USAGE);
-            System.exit(1);
+            throw new UsageException("No source root specified.");
         }
 
         String  classpath    = argValue(args, "--classpath", null);
@@ -143,9 +150,8 @@ public class Carve {
             for (String s : sourceArgs) {
                 int colon = s.indexOf(':');
                 if (colon <= 0) {
-                    System.err.println("Invalid --source value '" + s
+                    throw new UsageException("Invalid --source value '" + s
                         + "': expected format is 'name:path'");
-                    System.exit(1);
                 }
                 nameByPath.put(s.substring(0, colon), s.substring(colon + 1));
             }
@@ -164,7 +170,7 @@ public class Carve {
             markersFile, printRisks, printPaths, printCycles, printLocks, writeDot, outputDir);
     }
 
-    private static CtModel buildSpoonModel(CarveConfig c) {
+    static CtModel buildSpoonModel(CarveConfig c) {
         Launcher launcher = new Launcher();
         if (c.resolver().isMultiProject()) {
             c.resolver().sourcePaths().forEach(launcher::addInputResource);
@@ -188,7 +194,7 @@ public class Carve {
         return model;
     }
 
-    private static CallGraph extractCallGraph(CtModel model, CarveConfig c) throws IOException {
+    static CallGraph extractCallGraph(CtModel model, CarveConfig c) throws IOException {
         UserDefinedMarkers customMarkers = resolveMarkers(c.markersFile(), c.primarySourceRoot());
         CallGraph callGraph = new CallGraph();
         long tExtract = System.nanoTime();
@@ -200,7 +206,7 @@ public class Carve {
         return callGraph;
     }
 
-    private static Analyses runAnalyses(CallGraph cg, CarveConfig c) {
+    static Analyses runAnalyses(CallGraph cg, CarveConfig c) {
         long tRisks = System.nanoTime();
         List<TransactionRisk> risks = new TransactionAnalyzer(cg).findRisks();
         log.info("Transaction risks: {}  [{}]", risks.size(), elapsed(tRisks));
@@ -238,7 +244,7 @@ public class Carve {
             nestedTxRisks, cyclicTxRisks);
     }
 
-    private static void writeReports(CallGraph cg, Analyses r, CarveConfig c)
+    static void writeReports(CallGraph cg, Analyses r, CarveConfig c)
             throws IOException {
         Path outPath = Path.of(c.outputDir());
         Files.createDirectories(outPath);
@@ -324,7 +330,7 @@ public class Carve {
         log.info("Reports written (wall clock)  [{}]", elapsed(tReports));
     }
 
-    private static void printSummary(CallGraph cg, Analyses r, CarveConfig c, long t0) {
+    static void printSummary(CallGraph cg, Analyses r, CarveConfig c, long t0) {
         Path outPath     = Path.of(c.outputDir());
         Path htmlFile    = outPath.resolve("class-graph.html");
         Path pkgHtmlFile = outPath.resolve("package-graph.html");
@@ -451,6 +457,15 @@ public class Carve {
         return (System.nanoTime() - startNano) / 1_000_000 + " ms";
     }
 
+    /**
+     * Thrown by {@link #parseArgs} on an invalid command line. {@link #main}
+     * catches it, prints the message plus usage, and exits non-zero — keeping
+     * {@code parseArgs} a pure, testable function free of {@code System.exit}.
+     */
+    static final class UsageException extends RuntimeException {
+        UsageException(String message) { super(message); }
+    }
+
     @FunctionalInterface
     private interface IoRunnable {
         void run() throws IOException;
@@ -470,7 +485,7 @@ public class Carve {
     // Internal records
     // -----------------------------------------------------------------------
 
-    private record CarveConfig(
+    record CarveConfig(
         ProjectResolver resolver,
         String primarySourceRoot,
         String classpath,
@@ -485,7 +500,7 @@ public class Carve {
         String outputDir
     ) {}
 
-    private record Analyses(
+    record Analyses(
         List<TransactionRisk> risks,
         List<PathAnalyzer.LongestPath> longestPaths,
         List<Set<MethodNode>> cyclicClusters,
