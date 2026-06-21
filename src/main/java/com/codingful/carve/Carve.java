@@ -132,8 +132,8 @@ public class Carve {
         }
 
         String  classpath    = argValue(args, "--classpath", null);
-        int     javaLevel    = Integer.parseInt(argValue(args, "--java", "21"));
-        Charset encoding     = Charset.forName(argValue(args, "--encoding", "UTF-8"));
+        int     javaLevel    = parseJavaLevel(argValue(args, "--java", "21"));
+        Charset encoding     = parseEncoding(argValue(args, "--encoding", "UTF-8"));
         String  markersFile  = argValue(args, "--markers", null);
         boolean printRisks   = hasFlag(args, "--print-risks");
         boolean printPaths   = hasFlag(args, "--print-paths");
@@ -141,6 +141,32 @@ public class Carve {
         boolean printLocks   = hasFlag(args, "--print-lock-risks");
         boolean writeDot     = hasFlag(args, "--dot");
         String  outputDir    = argValue(args, "--output", ".");
+
+        // An explicitly supplied markers file must exist: fail fast with a clean
+        // usage error rather than letting a NoSuchFileException surface later as a
+        // raw stack trace from deep in the extraction phase.
+        if (markersFile != null && !Files.exists(Path.of(markersFile))) {
+            throw new UsageException("Markers file not found: " + markersFile);
+        }
+
+        // The output dir is created later if absent, but if the path already exists
+        // as a non-directory writeReports would blow up with FileAlreadyExistsException
+        // — reject it up front with a clean message.
+        Path outPath = Path.of(outputDir);
+        if (Files.exists(outPath) && !Files.isDirectory(outPath)) {
+            throw new UsageException("Output path is not a directory: " + outputDir);
+        }
+
+        // Every concrete classpath entry must exist (wildcard globs are passed
+        // through to Spoon untouched).
+        if (classpath != null) {
+            for (String entry : classpath.split(":")) {
+                if (entry.isBlank() || entry.indexOf('*') >= 0 || entry.indexOf('?') >= 0) continue;
+                if (!Files.exists(Path.of(entry))) {
+                    throw new UsageException("Classpath entry not found: " + entry);
+                }
+            }
+        }
 
         ProjectResolver resolver;
         String primarySourceRoot;
@@ -153,7 +179,9 @@ public class Carve {
                     throw new UsageException("Invalid --source value '" + s
                         + "': expected format is 'name:path'");
                 }
-                nameByPath.put(s.substring(0, colon), s.substring(colon + 1));
+                String sourcePath = s.substring(colon + 1);
+                requireSourceRoot(sourcePath);
+                nameByPath.put(s.substring(0, colon), sourcePath);
             }
             resolver = ProjectResolver.of(nameByPath);
             primarySourceRoot = nameByPath.values().iterator().next();
@@ -161,6 +189,7 @@ public class Carve {
                 resolver.projectNames(), javaLevel, encoding, classpath, markersFile);
         } else {
             primarySourceRoot = args[0];
+            requireSourceRoot(primarySourceRoot);
             resolver = ProjectResolver.NONE;
             log.info("Source: {}  Java level: {}  Encoding: {}  Classpath: {}  Markers: {}",
                 primarySourceRoot, javaLevel, encoding, classpath, markersFile);
@@ -450,6 +479,35 @@ public class Carve {
             if (arg.equals(flag)) return true;
         }
         return false;
+    }
+
+    /** Parses {@code --java} into a positive compliance level, or fails with a usage error. */
+    private static int parseJavaLevel(String value) {
+        try {
+            int level = Integer.parseInt(value.trim());
+            if (level <= 0) {
+                throw new UsageException("Invalid Java level (expected a positive integer): " + value);
+            }
+            return level;
+        } catch (NumberFormatException e) {
+            throw new UsageException("Invalid Java level (expected a positive integer): " + value);
+        }
+    }
+
+    /** Resolves {@code --encoding} into a {@link Charset}, or fails with a usage error. */
+    private static Charset parseEncoding(String value) {
+        try {
+            return Charset.forName(value);
+        } catch (IllegalArgumentException e) { // unsupported or syntactically illegal charset name
+            throw new UsageException("Unsupported encoding: " + value);
+        }
+    }
+
+    /** Fails with a usage error when a declared source root does not exist on disk. */
+    private static void requireSourceRoot(String path) {
+        if (!Files.exists(Path.of(path))) {
+            throw new UsageException("Source root not found: " + path);
+        }
     }
 
     /** Returns elapsed milliseconds since {@code startNano} as a loggable string. */
