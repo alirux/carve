@@ -111,6 +111,11 @@ Options:
   --output <dir>           Output directory (default: current directory)
 ```
 
+Arguments are validated up front: a missing source root, a non-existent `--markers`
+or `--classpath` entry, an `--output` that is not a directory, or an invalid `--java`
+/ `--encoding` value fails immediately with a clear message and a non-zero exit code,
+rather than a stack trace partway through the run.
+
 ### Source roots vs classpath
 
 `--source` and `--classpath` serve different levels of the dependency graph:
@@ -294,40 +299,22 @@ The tag must follow the `v<semver>` format (e.g. `v1.0.0`, `v1.2.3`). The result
 
 ## Architecture
 
-```
-src/main/java/com/codingful/carve/
-├── spring/
-│   └── SpringMarkers.java          # Spring/Jakarta FQN constants and detection logic
-├── model/
-│   ├── MethodNode.java             # call-graph vertex: identity + Spring metadata
-│   ├── ExternalCallType.java       # HTTP, JDBC, JPA, MESSAGING, CACHE
-│   ├── SpringComponentType.java    # SERVICE, REPOSITORY, CONTROLLER, …
-│   └── TransactionPropagation.java # mirrors Spring's Propagation enum
-├── extractor/
-│   ├── CallGraphExtractor.java     # Spoon CtScanner: graph construction + CHA resolution
-│   ├── ProjectResolver.java        # maps source file paths to named projects
-│   └── UserDefinedMarkers.java     # custom FQN→ExternalCallType from .properties
-├── graph/
-│   └── CallGraph.java              # JGraphT wrapper with filtered views
-├── analyzer/
-│   ├── TransactionAnalyzer.java    # BFS from @Transactional roots → risk detection
-│   ├── TransactionRisk.java        # risk record: root + call site + path
-│   ├── PathAnalyzer.java           # longest simple path finder
-│   ├── CouplingAnalyzer.java       # SCC + package coupling metrics
-│   └── LockRiskAnalyzer.java       # REQUIRES_NEW nesting + cyclic @Transactional detection
-├── reporter/
-│   ├── ClassGraphModel.java        # method→class collapse + attribute aggregation
-│   ├── PackageGraphModel.java      # class→package collapse
-│   ├── HtmlReporter.java           # class-graph.html (self-contained 3D WebGL viewer)
-│   ├── PackageHtmlReporter.java    # package-graph.html (self-contained 3D WebGL viewer)
-│   ├── GexfReporter.java           # class-graph.gexf for Gephi
-│   ├── DotReporter.java            # call-graph.dot (Graphviz, method-level)
-│   ├── JsonReporter.java           # analysis.json
-│   └── ConsoleReporter.java        # --print-* console output
-├── util/
-│   └── Fqns.java                   # shared FQN string utilities
-└── Carve.java                      # CLI entry point + programmatic API
-```
+The code under `src/main/java/com/codingful/carve/` is organised into packages that
+mirror the analysis pipeline:
+
+| Package | Responsibility |
+|---|---|
+| `spring` | Spring/Jakarta FQN constants and stereotype/annotation detection |
+| `model` | Call-graph vertex (`MethodNode`) and its enums (component type, external-call type, propagation) |
+| `extractor` | Spoon `CtScanner` that builds the graph and resolves calls (CHA), plus project and custom-marker resolution |
+| `graph` | JGraphT wrapper with filtered views over the call graph |
+| `analyzer` | Transaction-risk, longest-path, coupling (SCC + metrics) and DB-lock-risk analyses |
+| `reporter` | Class/package graph collapse and the HTML, GEXF, DOT, JSON and console exporters |
+| `util` | Shared FQN string helpers |
+
+The top-level classes wire it together: `Carve` (CLI entry point + pipeline
+orchestration), `CarveConfig` (argument parsing and validation), `ReportWriter`
+(parallel report generation) and `Analyses` (aggregated results).
 
 To add detection for a well-known library (e.g. a gRPC client), add its FQN to `SpringMarkers.java`. For project-specific vendor SDKs, use a `--markers` file instead — this keeps `SpringMarkers` focused on standard library patterns.
 
