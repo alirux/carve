@@ -23,39 +23,24 @@ import com.codingful.carve.analyzer.PathAnalyzer;
 import com.codingful.carve.analyzer.TransactionAnalyzer;
 import com.codingful.carve.analyzer.TransactionRisk;
 import com.codingful.carve.extractor.CallGraphExtractor;
-import com.codingful.carve.extractor.ProjectResolver;
 import com.codingful.carve.extractor.UserDefinedMarkers;
 import com.codingful.carve.graph.CallGraph;
 import com.codingful.carve.model.MethodNode;
-import com.codingful.carve.reporter.ClassGraphModel;
 import com.codingful.carve.reporter.ConsoleReporter;
-import com.codingful.carve.reporter.DotReporter;
-import com.codingful.carve.reporter.GexfReporter;
-import com.codingful.carve.reporter.HtmlReporter;
-import com.codingful.carve.reporter.JsonReporter;
-import com.codingful.carve.reporter.PackageGraphModel;
-import com.codingful.carve.reporter.PackageHtmlReporter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import spoon.Launcher;
 import spoon.reflect.CtModel;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.Executors;
 
 /**
- * CLI entry point.
+ * CLI entry point and pipeline orchestrator.
  *
  * <pre>
  * Usage:
@@ -65,6 +50,10 @@ import java.util.concurrent.Executors;
  *   java -jar carve.jar /path/to/src/main/java
  *   java -jar carve.jar /path/to/src/main/java --classpath /path/to/lib/*.jar --java 21
  * </pre>
+ *
+ * Command-line parsing lives in {@link CarveConfig}; report generation in
+ * {@link ReportWriter}. This class wires the phases together:
+ * parse → build Spoon model → extract call graph → analyse → write reports.
  *
  * Outputs files in the output directory (default: current directory):
  * <ul>
@@ -103,8 +92,8 @@ public class Carve {
     public static void main(String[] args) throws IOException {
         CarveConfig config;
         try {
-            config = parseArgs(args);
-        } catch (UsageException e) {
+            config = CarveConfig.parse(args);
+        } catch (CarveConfig.UsageException e) {
             System.err.println(e.getMessage());
             System.err.println(USAGE);
             System.exit(1);
@@ -115,89 +104,13 @@ public class Carve {
         CtModel   model  = buildSpoonModel(config);
         CallGraph cg     = extractCallGraph(model, config);
         Analyses  result = runAnalyses(cg, config);
-        writeReports(cg, result, config);
+        ReportWriter.write(cg, result, config);
         printSummary(cg, result, config, t0);
     }
 
     // -----------------------------------------------------------------------
     // Pipeline phases
     // -----------------------------------------------------------------------
-
-    static CarveConfig parseArgs(String[] args) {
-        List<String> sourceArgs = argValues(args, "--source");
-        boolean hasPositionalSource = args.length > 0 && !args[0].startsWith("-");
-
-        if (sourceArgs.isEmpty() && !hasPositionalSource) {
-            throw new UsageException("No source root specified.");
-        }
-
-        String  classpath    = argValue(args, "--classpath", null);
-        int     javaLevel    = parseJavaLevel(argValue(args, "--java", "21"));
-        Charset encoding     = parseEncoding(argValue(args, "--encoding", "UTF-8"));
-        String  markersFile  = argValue(args, "--markers", null);
-        boolean printRisks   = hasFlag(args, "--print-risks");
-        boolean printPaths   = hasFlag(args, "--print-paths");
-        boolean printCycles  = hasFlag(args, "--print-cycles");
-        boolean printLocks   = hasFlag(args, "--print-lock-risks");
-        boolean writeDot     = hasFlag(args, "--dot");
-        String  outputDir    = argValue(args, "--output", ".");
-
-        // An explicitly supplied markers file must exist: fail fast with a clean
-        // usage error rather than letting a NoSuchFileException surface later as a
-        // raw stack trace from deep in the extraction phase.
-        if (markersFile != null && !Files.exists(Path.of(markersFile))) {
-            throw new UsageException("Markers file not found: " + markersFile);
-        }
-
-        // The output dir is created later if absent, but if the path already exists
-        // as a non-directory writeReports would blow up with FileAlreadyExistsException
-        // — reject it up front with a clean message.
-        Path outPath = Path.of(outputDir);
-        if (Files.exists(outPath) && !Files.isDirectory(outPath)) {
-            throw new UsageException("Output path is not a directory: " + outputDir);
-        }
-
-        // Every concrete classpath entry must exist (wildcard globs are passed
-        // through to Spoon untouched).
-        if (classpath != null) {
-            for (String entry : classpath.split(":")) {
-                if (entry.isBlank() || entry.indexOf('*') >= 0 || entry.indexOf('?') >= 0) continue;
-                if (!Files.exists(Path.of(entry))) {
-                    throw new UsageException("Classpath entry not found: " + entry);
-                }
-            }
-        }
-
-        ProjectResolver resolver;
-        String primarySourceRoot;
-
-        if (!sourceArgs.isEmpty()) {
-            Map<String, String> nameByPath = new LinkedHashMap<>();
-            for (String s : sourceArgs) {
-                int colon = s.indexOf(':');
-                if (colon <= 0) {
-                    throw new UsageException("Invalid --source value '" + s
-                        + "': expected format is 'name:path'");
-                }
-                String sourcePath = s.substring(colon + 1);
-                requireSourceRoot(sourcePath);
-                nameByPath.put(s.substring(0, colon), sourcePath);
-            }
-            resolver = ProjectResolver.of(nameByPath);
-            primarySourceRoot = nameByPath.values().iterator().next();
-            log.info("Projects: {}  Java level: {}  Encoding: {}  Classpath: {}  Markers: {}",
-                resolver.projectNames(), javaLevel, encoding, classpath, markersFile);
-        } else {
-            primarySourceRoot = args[0];
-            requireSourceRoot(primarySourceRoot);
-            resolver = ProjectResolver.NONE;
-            log.info("Source: {}  Java level: {}  Encoding: {}  Classpath: {}  Markers: {}",
-                primarySourceRoot, javaLevel, encoding, classpath, markersFile);
-        }
-
-        return new CarveConfig(resolver, primarySourceRoot, classpath, javaLevel, encoding,
-            markersFile, printRisks, printPaths, printCycles, printLocks, writeDot, outputDir);
-    }
 
     static CtModel buildSpoonModel(CarveConfig c) {
         Launcher launcher = new Launcher();
@@ -271,92 +184,6 @@ public class Carve {
 
         return new Analyses(risks, longestPaths, cyclicClusters, coupling,
             nestedTxRisks, cyclicTxRisks);
-    }
-
-    static void writeReports(CallGraph cg, Analyses r, CarveConfig c)
-            throws IOException {
-        Path outPath = Path.of(c.outputDir());
-        Files.createDirectories(outPath);
-
-        Path jsonFile    = outPath.resolve("analysis.json");
-        Path dotFile     = outPath.resolve("call-graph.dot");
-        Path gexfFile    = outPath.resolve("class-graph.gexf");
-        Path htmlFile    = outPath.resolve("class-graph.html");
-        Path pkgHtmlFile = outPath.resolve("package-graph.html");
-
-        // Class-level collapse is shared by GEXF and HTML; compute once on the main thread.
-        long tCollapse = System.nanoTime();
-        ClassGraphModel classModel = ClassGraphModel.collapse(
-            cg, r.risks(), r.cyclicClusters(), r.nestedTxRisks(), r.cyclicTxRisks());
-        log.info("Class model collapsed: {} classes, {} edges  [{}]",
-            classModel.nodes().size(), classModel.edges().size(), elapsed(tCollapse));
-
-        var hotspotsByPkg = CouplingAnalyzer.classifyHotspots(r.coupling().values()).byPackage();
-        PackageGraphModel pkgModel = PackageGraphModel.collapse(classModel, hotspotsByPkg);
-        log.info("Package model collapsed: {} packages, {} edges ({} hotspots)",
-            pkgModel.nodes().size(), pkgModel.edges().size(), hotspotsByPkg.size());
-
-        List<CompletableFuture<Void>> reportTasks = new ArrayList<>();
-        long tReports = System.nanoTime();
-
-        try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
-
-            reportTasks.add(CompletableFuture.runAsync(ioTask(() -> {
-                long t = System.nanoTime();
-                try (var w = Files.newBufferedWriter(jsonFile)) {
-                    new JsonReporter(cg).write(w, r.risks(), r.longestPaths(),
-                        r.cyclicClusters(), r.coupling(), r.nestedTxRisks(), r.cyclicTxRisks());
-                }
-                log.info("JSON written: {}  [{}]", jsonFile, elapsed(t));
-            }), exec));
-
-            // Method-level DOT is opt-in: on a large monolith its SVG is an unreadable
-            // hairball, so the interactive class-level exports below are the default.
-            if (c.writeDot()) {
-                reportTasks.add(CompletableFuture.runAsync(ioTask(() -> {
-                    long t = System.nanoTime();
-                    try (var w = Files.newBufferedWriter(dotFile)) {
-                        new DotReporter(cg, r.cyclicClusters())
-                            .writeWithRisks(w, true, r.risks());
-                    }
-                    log.info("DOT written: {}  [{}]", dotFile, elapsed(t));
-                }), exec));
-            }
-
-            reportTasks.add(CompletableFuture.runAsync(ioTask(() -> {
-                long t = System.nanoTime();
-                try (var w = Files.newBufferedWriter(gexfFile)) {
-                    new GexfReporter().write(w, classModel);
-                }
-                log.info("GEXF written: {} ({} classes, {} edges)  [{}]",
-                    gexfFile, classModel.nodes().size(), classModel.edges().size(), elapsed(t));
-            }), exec));
-
-            reportTasks.add(CompletableFuture.runAsync(ioTask(() -> {
-                long t = System.nanoTime();
-                try (var w = Files.newBufferedWriter(htmlFile)) {
-                    new HtmlReporter().write(w, classModel);
-                }
-                log.info("HTML written: {}  [{}]", htmlFile, elapsed(t));
-            }), exec));
-
-            reportTasks.add(CompletableFuture.runAsync(ioTask(() -> {
-                long t = System.nanoTime();
-                try (var w = Files.newBufferedWriter(pkgHtmlFile)) {
-                    new PackageHtmlReporter().write(w, pkgModel);
-                }
-                log.info("Package HTML written: {}  [{}]", pkgHtmlFile, elapsed(t));
-            }), exec));
-
-            try {
-                CompletableFuture.allOf(reportTasks.toArray(CompletableFuture[]::new)).join();
-            } catch (CompletionException e) {
-                Throwable cause = e.getCause();
-                if (cause instanceof UncheckedIOException uio) throw uio.getCause();
-                throw new IOException(cause);
-            }
-        }
-        log.info("Reports written (wall clock)  [{}]", elapsed(tReports));
     }
 
     static void printSummary(CallGraph cg, Analyses r, CarveConfig c, long t0) {
@@ -455,115 +282,8 @@ public class Carve {
         return UserDefinedMarkers.EMPTY;
     }
 
-    /** Returns all values for a repeatable flag (e.g. {@code --source name:path}). */
-    private static List<String> argValues(String[] args, String flag) {
-        List<String> result = new ArrayList<>();
-        for (int i = 0; i < args.length - 1; i++) {
-            if (args[i].equals(flag)) {
-                result.add(args[i + 1]);
-                i++; // skip the value
-            }
-        }
-        return result;
-    }
-
-    private static String argValue(String[] args, String flag, String defaultValue) {
-        for (int i = 0; i < args.length - 1; i++) {
-            if (args[i].equals(flag)) return args[i + 1];
-        }
-        return defaultValue;
-    }
-
-    private static boolean hasFlag(String[] args, String flag) {
-        for (String arg : args) {
-            if (arg.equals(flag)) return true;
-        }
-        return false;
-    }
-
-    /** Parses {@code --java} into a positive compliance level, or fails with a usage error. */
-    private static int parseJavaLevel(String value) {
-        try {
-            int level = Integer.parseInt(value.trim());
-            if (level <= 0) {
-                throw new UsageException("Invalid Java level (expected a positive integer): " + value);
-            }
-            return level;
-        } catch (NumberFormatException e) {
-            throw new UsageException("Invalid Java level (expected a positive integer): " + value);
-        }
-    }
-
-    /** Resolves {@code --encoding} into a {@link Charset}, or fails with a usage error. */
-    private static Charset parseEncoding(String value) {
-        try {
-            return Charset.forName(value);
-        } catch (IllegalArgumentException e) { // unsupported or syntactically illegal charset name
-            throw new UsageException("Unsupported encoding: " + value);
-        }
-    }
-
-    /** Fails with a usage error when a declared source root does not exist on disk. */
-    private static void requireSourceRoot(String path) {
-        if (!Files.exists(Path.of(path))) {
-            throw new UsageException("Source root not found: " + path);
-        }
-    }
-
     /** Returns elapsed milliseconds since {@code startNano} as a loggable string. */
     private static String elapsed(long startNano) {
         return (System.nanoTime() - startNano) / 1_000_000 + " ms";
     }
-
-    /**
-     * Thrown by {@link #parseArgs} on an invalid command line. {@link #main}
-     * catches it, prints the message plus usage, and exits non-zero — keeping
-     * {@code parseArgs} a pure, testable function free of {@code System.exit}.
-     */
-    static final class UsageException extends RuntimeException {
-        UsageException(String message) { super(message); }
-    }
-
-    @FunctionalInterface
-    private interface IoRunnable {
-        void run() throws IOException;
-    }
-
-    private static Runnable ioTask(IoRunnable r) {
-        return () -> {
-            try {
-                r.run();
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
-        };
-    }
-
-    // -----------------------------------------------------------------------
-    // Internal records
-    // -----------------------------------------------------------------------
-
-    record CarveConfig(
-        ProjectResolver resolver,
-        String primarySourceRoot,
-        String classpath,
-        int javaLevel,
-        Charset encoding,
-        String markersFile,
-        boolean printRisks,
-        boolean printPaths,
-        boolean printCycles,
-        boolean printLockRisks,
-        boolean writeDot,
-        String outputDir
-    ) {}
-
-    record Analyses(
-        List<TransactionRisk> risks,
-        List<PathAnalyzer.LongestPath> longestPaths,
-        List<Set<MethodNode>> cyclicClusters,
-        Map<String, CouplingAnalyzer.PackageCoupling> coupling,
-        List<LockRiskAnalyzer.NestedTxRisk> nestedTxRisks,
-        List<LockRiskAnalyzer.CyclicTxRisk> cyclicTxRisks
-    ) {}
 }
