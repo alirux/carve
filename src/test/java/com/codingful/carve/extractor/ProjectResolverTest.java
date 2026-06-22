@@ -144,7 +144,6 @@ class ProjectResolverTest {
         Launcher launcher = new Launcher();
         for (Path root : sourceRoots) launcher.addInputResource(root.toString());
         launcher.getEnvironment().setNoClasspath(true);
-        launcher.getEnvironment().setComplianceLevel(21);
         launcher.getEnvironment().setShouldCompile(false);
         return launcher.buildModel();
     }

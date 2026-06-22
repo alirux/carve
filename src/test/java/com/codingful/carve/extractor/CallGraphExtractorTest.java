@@ -41,7 +41,6 @@ class CallGraphExtractorTest {
             new spoon.support.compiler.VirtualFile(source, className + ".java")
         );
         launcher.getEnvironment().setNoClasspath(true);
-        launcher.getEnvironment().setComplianceLevel(21);
         launcher.getEnvironment().setShouldCompile(false);
 
         CtModel model = launcher.buildModel();
@@ -265,7 +264,6 @@ class CallGraphExtractorTest {
         spoon.Launcher launcher = new spoon.Launcher();
         launcher.addInputResource(new spoon.support.compiler.VirtualFile(source, "Order.java"));
         launcher.getEnvironment().setNoClasspath(true);
-        launcher.getEnvironment().setComplianceLevel(21);
         launcher.getEnvironment().setShouldCompile(false);
         spoon.reflect.CtModel model = launcher.buildModel();
 

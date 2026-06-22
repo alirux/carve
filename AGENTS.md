@@ -50,8 +50,7 @@ Spoon reports the canonical `/private/var/...`, so `path.startsWith(root)` fails
 Older Spoon needed `setComplianceLevel(21)` to dodge `Unrecognized option : -25`
 under a JDK-25 JVM. This is fixed from **Spoon 11.4.0 (ECJ 3.46.0)**, which
 supports JDK 25 natively — both an explicit level 25 and the inherited JVM level
-build fine, so no workaround is needed. (Some existing tests still set level 21;
-it is harmless, just no longer required.)
+build fine, so no workaround is needed.
 
 ## Commit messages
 

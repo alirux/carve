@@ -98,7 +98,6 @@ class UserDefinedMarkersTest {
         Launcher launcher = new Launcher();
         launcher.addInputResource(new VirtualFile(source, "Orders.java"));
         launcher.getEnvironment().setNoClasspath(true);
-        launcher.getEnvironment().setComplianceLevel(21);
         launcher.getEnvironment().setShouldCompile(false);
         CtModel model = launcher.buildModel();
 
