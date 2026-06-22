@@ -39,7 +39,9 @@ for the architecture and CLI.
      constant so input and assertion cannot drift.
    Keep a literal only for a genuine *transform output* (e.g.
    `shortLabel("com.acme.web") == "acme.web"`) — deriving it via production code
-   would be tautological.
+   would be tautological. Apply all three tiers in the first draft: before
+   considering a test file done, scan it for repeated contract strings and extract
+   constants up front.
 
 ### Spoon-based tests — one gotcha
 
