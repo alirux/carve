@@ -20,7 +20,7 @@ repositories {
     mavenCentral()
 }
 
-val spoonVersion    = "11.2.1"
+val spoonVersion    = "11.4.0"
 val jgraphtVersion  = "1.5.2"
 val jacksonVersion  = "3.2.0"
 val slf4jVersion    = "2.0.13"
