@@ -65,9 +65,12 @@ build fine, so no workaround is needed.
   the behaviour/feature covered are welcome.
 - Do **not** add a `Co-Authored-By` trailer.
 - **Before every commit, check that the markdown docs (`README.md`, `AGENTS.md`,
-  …) are consistent with what is being committed** — update them in the same
-  change if the code, conventions, structure, or commands they describe have
-  moved. Treat stale docs as part of the diff, not a follow-up.
+  `THIRD-PARTY-NOTICES.md`, …) are consistent with what is being committed** —
+  update them in the same change if the code, conventions, structure, or commands
+  they describe have moved. Treat stale docs as part of the diff, not a follow-up.
+  In particular, update `THIRD-PARTY-NOTICES.md` whenever the commit changes a
+  bundled runtime dependency (an `implementation`/`runtimeOnly` entry in
+  `build.gradle.kts`).
 
 ## Naming & confidentiality
 
