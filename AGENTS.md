@@ -21,6 +21,10 @@ for the architecture and CLI.
    and real collaborators (a real `CallGraph`, a real Spoon model over `@TempDir`
    files, etc.). The shared real-object builder is
    `src/test/java/com/codingful/carve/support/TestNodes.java`.
+   Refactoring the production code under test to make it testable without mocks is
+   explicitly allowed — extract a pure function, change visibility, split a class,
+   replace `System.exit` with a thrown exception, introduce a seam. Prefer a
+   behaviour-preserving refactor over reaching for a mock.
 
 3. **Test behaviours, not coverage.** Aim for assertions that would fail under
    mutation: cover empty *and* populated inputs, single *and* multiple items,
@@ -60,6 +64,10 @@ build fine, so no workaround is needed.
   mechanism/refactoring-technique details out of the body. Coverage deltas and
   the behaviour/feature covered are welcome.
 - Do **not** add a `Co-Authored-By` trailer.
+- **Before every commit, check that the markdown docs (`README.md`, `AGENTS.md`,
+  …) are consistent with what is being committed** — update them in the same
+  change if the code, conventions, structure, or commands they describe have
+  moved. Treat stale docs as part of the diff, not a follow-up.
 
 ## Naming & confidentiality
 

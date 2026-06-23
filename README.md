@@ -329,14 +329,9 @@ To add detection for a well-known library (e.g. a gRPC client), add its FQN to `
 
 ## Stack
 
-| Dependency | Version | Role |
-|---|---|---|
-| [Spoon](https://github.com/INRIA/spoon) | 11.2.1 | Java AST parsing and type resolution |
-| [JGraphT](https://jgrapht.org/) | 1.5.2 | Call graph, SCC, path algorithms |
-| [Jackson](https://github.com/FasterXML/jackson) | 3.2.0 | JSON reporting |
-| [SLF4J](https://www.slf4j.org/) + Logback | 2.0.13 / 1.5.6 | Logging |
-| [JUnit](https://junit.org/) + AssertJ | 6.0.3 / 3.27.7 | Testing |
-| [Shadow](https://gradleup.com/shadow/) | 9.0.0 | Fat-jar packaging |
+Built on [Spoon](https://github.com/INRIA/spoon) for Java source parsing and type
+resolution, and [JGraphT](https://jgrapht.org/) for the call-graph and graph
+algorithms.
 
 ## License
 
