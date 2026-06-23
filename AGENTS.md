@@ -64,6 +64,9 @@ build fine, so no workaround is needed.
   mechanism/refactoring-technique details out of the body. Coverage deltas and
   the behaviour/feature covered are welcome.
 - Do **not** add a `Co-Authored-By` trailer.
+- **Before every commit, run the full test suite and make sure it is green**
+  (`./gradlew test`, or `./gradlew check` to include the coverage gate). Never
+  commit with failing or unrun tests.
 - **Before every commit, check that the markdown docs (`README.md`, `AGENTS.md`,
   `THIRD-PARTY-NOTICES.md`, …) are consistent with what is being committed** —
   update them in the same change if the code, conventions, structure, or commands
