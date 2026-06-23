@@ -275,9 +275,13 @@ dot -Tsvg reports/call-graph.dot -o reports/call-graph.svg
 
 ```bash
 ./gradlew test          # compile + run all tests
+./gradlew check         # tests + coverage gate (fails if coverage regresses)
 ./gradlew shadowJar     # build fat-jar → build/libs/carve-<version>.jar
 ./gradlew build         # both of the above
 ```
+
+`check` enforces a JaCoCo coverage floor (90% instructions, 80% branches); a
+change that drops below it fails the build.
 
 When built locally the JAR is versioned `dev-SNAPSHOT`. Pass `VERSION=x.y.z` to produce a named build:
 

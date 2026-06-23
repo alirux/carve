@@ -60,6 +60,21 @@ tasks.jacocoTestReport {
     }
 }
 
+tasks.jacocoTestCoverageVerification {
+    dependsOn(tasks.test)
+    violationRules {
+        rule {
+            limit { counter = "INSTRUCTION"; minimum = "0.90".toBigDecimal() }
+            limit { counter = "BRANCH";      minimum = "0.80".toBigDecimal() }
+        }
+    }
+}
+
+// `./gradlew check` fails if coverage regresses below the thresholds above.
+tasks.check {
+    dependsOn(tasks.jacocoTestCoverageVerification)
+}
+
 tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
     archiveClassifier = ""
     mergeServiceFiles()
