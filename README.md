@@ -258,7 +258,7 @@ dot -Tsvg reports/call-graph.dot -o reports/call-graph.svg
 
 ## Known limitations
 
-**Java version support:** Spoon 11.2.1 / ECJ 3.41.0 parses source code up to Java 23. Java 24/25 requires a future Spoon upgrade.
+**Java version support:** source parsing tracks the Java version supported by the bundled Spoon/ECJ (currently up to Java 25). A brand-new Java release may need a Spoon upgrade before its newest syntax is recognised.
 
 **Spring AOP self-invocation:** `@Transactional` only takes effect on public methods called through the Spring proxy. A method calling `this.otherMethod()` bypasses the proxy and its annotation. The analyser cannot detect self-invocations and conservatively treats all calls as if the annotation is honoured.
 
