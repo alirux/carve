@@ -15,12 +15,14 @@ target/
 *.class
 bin/
 
-# Output
-*.dot
-*.svg
-*.gexf
-analysis.json
-class-graph.html
+# Output (analysis artifacts written to the working dir — anchored to the repo
+# root so they never match the HTML templates under src/main/resources)
+/*.dot
+/*.svg
+/*.gexf
+/analysis.json
+/class-graph.html
+/package-graph.html
 reports/
 
 # Local project-specific markers (never commit — may reference proprietary vendor names)
