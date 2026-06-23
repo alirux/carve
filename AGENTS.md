@@ -72,6 +72,22 @@ build fine, so no workaround is needed.
   bundled runtime dependency (an `implementation`/`runtimeOnly` entry in
   `build.gradle.kts`).
 
+## Releases
+
+Tags follow `v<semver>` and pushing one publishes a release. Before creating a
+release tag:
+
+1. **Check for breaking changes** since the previous release tag — diff the
+   public API surface and the CLI options/behaviour.
+2. If there are breaking changes, **verify the requested version is bumped per
+   semantic versioning** (a breaking change requires a major bump; in `0.x`, a
+   minor bump conventionally signals it).
+3. If the requested version does **not** match what semver requires, do not tag
+   silently — ask the user to choose between:
+   1. proceed with the version as given,
+   2. use the semver-correct version you propose, or
+   3. cancel.
+
 ## Naming & confidentiality
 
 - Never commit real client or vendor names into the repository (code, tests,
