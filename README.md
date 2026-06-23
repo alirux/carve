@@ -335,4 +335,6 @@ algorithms.
 
 ## License
 
-[AGPL 3.0](LICENSE). Compatible with the tool's dependencies: Spoon (CeCILL-C), JGraphT (LGPL), Jackson (Apache 2.0).
+[AGPL 3.0](LICENSE), compatible with the licenses of its bundled dependencies.
+Their attributions and licenses are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
+(also shipped inside the JAR).

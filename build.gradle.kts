@@ -63,6 +63,9 @@ tasks.jacocoTestReport {
 tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
     archiveClassifier = ""
     mergeServiceFiles()
+    // Ship attribution/notices for the bundled third-party libraries.
+    from("THIRD-PARTY-NOTICES.md")
+    from("LICENSE")
 }
 
 tasks.named("startScripts") {
