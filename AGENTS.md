@@ -31,6 +31,11 @@ for the architecture and CLI.
    ordering, joining, and format variants. 100% line coverage is not the goal —
    pinned behaviour is. If a surviving mutant has no possible killing input, that
    signals redundant/dead code to remove, not a test to add.
+   **A useless test is a wrong test — don't write it, and delete it if it exists.**
+   Useless means it tests the obvious, merely restates the implementation
+   (tautology — e.g. asserting `SET.contains(x)` for every `x` already in that
+   `SET`), or exists only to push the coverage number up. Cover the real behaviour
+   with a meaningful test (often from real source / a real collaborator) instead.
 
 4. **Avoid fragile hardcoded strings**, in three tiers:
    - **Format field names** (JSON/XML output) → deserialize into typed DTO records
