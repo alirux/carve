@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class UserDefinedMarkersTest {
 
     @Test
-    void exactFqnMatchIsDetectedAsHttp() throws Exception {
+    void GIVEN_an_exact_fqn_marker_WHEN_detecting_THEN_it_is_classified_as_http() throws Exception {
         String props = "com.acme.payments.client.PaymentGatewayClient = HTTP\n";
         UserDefinedMarkers markers = loadFromString(props);
 
@@ -43,7 +43,7 @@ class UserDefinedMarkersTest {
     }
 
     @Test
-    void packagePrefixMatchesSubclasses() throws Exception {
+    void GIVEN_a_package_prefix_marker_WHEN_detecting_THEN_it_matches_subclasses() throws Exception {
         String props = "com.acme.payments. = HTTP\n";
         UserDefinedMarkers markers = loadFromString(props);
 
@@ -54,13 +54,13 @@ class UserDefinedMarkersTest {
     }
 
     @Test
-    void unknownClassReturnsNull() throws Exception {
+    void GIVEN_an_unknown_class_WHEN_detecting_THEN_it_returns_null() throws Exception {
         UserDefinedMarkers markers = loadFromString("com.acme.payments. = HTTP\n");
         assertThat(markers.detect("com.unrelated.SomeClass")).isNull();
     }
 
     @Test
-    void vendorSdkInsideTransactionIsDetectedAsRisk() throws Exception {
+    void GIVEN_a_vendor_sdk_call_inside_a_transaction_WHEN_analysing_THEN_it_is_detected_as_a_risk() throws Exception {
         // A @Transactional service calls a vendor SDK that makes HTTPS calls.
         // The SDK class is not in SpringMarkers; it's declared in a custom markers file.
         String source = """

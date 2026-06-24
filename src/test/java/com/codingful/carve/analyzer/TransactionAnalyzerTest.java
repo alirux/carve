@@ -49,7 +49,7 @@ class TransactionAnalyzerTest {
     // -----------------------------------------------------------------------
 
     @Test
-    void detectsHttpCallReachableFromTransactionalRoot() {
+    void GIVEN_an_http_call_reachable_from_a_transactional_root_WHEN_analysing_THEN_a_risk_is_detected() {
         CallGraph cg = new CallGraph();
 
         MethodNode root     = appNode("placeOrder", true, TransactionPropagation.REQUIRED);
@@ -72,7 +72,7 @@ class TransactionAnalyzerTest {
     }
 
     @Test
-    void requiresNewStopsTxScopePropagation() {
+    void GIVEN_a_requires_new_boundary_WHEN_analysing_THEN_it_stops_transaction_scope_propagation() {
         CallGraph cg = new CallGraph();
 
         MethodNode root        = appNode("outerTx", true, TransactionPropagation.REQUIRED);
@@ -93,7 +93,7 @@ class TransactionAnalyzerTest {
     }
 
     @Test
-    void noRiskWhenHttpCallIsOutsideAnyTransaction() {
+    void GIVEN_an_http_call_outside_any_transaction_WHEN_analysing_THEN_no_risk() {
         CallGraph cg = new CallGraph();
 
         MethodNode nonTx   = appNode("doStuff", false, TransactionPropagation.REQUIRED);
@@ -109,7 +109,7 @@ class TransactionAnalyzerTest {
     }
 
     @Test
-    void jdbcCallInsideTxIsNotARisk() {
+    void GIVEN_a_jdbc_call_inside_a_transaction_WHEN_analysing_THEN_it_is_not_a_risk() {
         CallGraph cg = new CallGraph();
 
         MethodNode root = appNode("save", true, TransactionPropagation.REQUIRED);
@@ -127,7 +127,7 @@ class TransactionAnalyzerTest {
     }
 
     @Test
-    void messagingCallInsideTxIsARisk() {
+    void GIVEN_a_messaging_call_inside_a_transaction_WHEN_analysing_THEN_it_is_a_risk() {
         CallGraph cg = new CallGraph();
 
         MethodNode root = appNode("processOrder", true, TransactionPropagation.REQUIRED);

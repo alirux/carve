@@ -54,7 +54,7 @@ class CallGraphExtractorTest {
     // -----------------------------------------------------------------------
 
     @Test
-    void detectsServiceStereotype() {
+    void GIVEN_a_service_annotated_class_WHEN_extracting_THEN_the_stereotype_is_detected() {
         String source = """
             package com.example;
 
@@ -77,7 +77,7 @@ class CallGraphExtractorTest {
     }
 
     @Test
-    void detectsClassLevelTransactional() {
+    void GIVEN_a_class_level_transactional_WHEN_extracting_THEN_its_methods_are_transactional() {
         String source = """
             package com.example;
 
@@ -102,7 +102,7 @@ class CallGraphExtractorTest {
     }
 
     @Test
-    void methodLevelTransactionalOverridesClass() {
+    void GIVEN_a_method_level_transactional_WHEN_extracting_THEN_it_overrides_the_class_level() {
         String source = """
             package com.example;
 
@@ -129,7 +129,7 @@ class CallGraphExtractorTest {
     }
 
     @Test
-    void detectsCallEdge() {
+    void GIVEN_a_method_call_WHEN_extracting_THEN_a_call_edge_is_created() {
         String source = """
             package com.example;
 
@@ -156,7 +156,7 @@ class CallGraphExtractorTest {
     }
 
     @Test
-    void detectsRestTemplateAsHttpExternalCall() {
+    void GIVEN_a_rest_template_call_WHEN_extracting_THEN_it_is_an_http_external_call() {
         String source = """
             package com.example;
 
@@ -184,7 +184,7 @@ class CallGraphExtractorTest {
     }
 
     @Test
-    void detectsSqlSessionAsJdbcExternalCall() {
+    void GIVEN_a_sql_session_call_WHEN_extracting_THEN_it_is_a_jdbc_external_call() {
         // Common MyBatis pattern:
         // @Component DAO impl that @Autowires SqlSession (backed by SqlSessionTemplate at runtime)
         // and calls selectOne / insert / update / delete with string statement IDs.
@@ -224,7 +224,7 @@ class CallGraphExtractorTest {
     }
 
     @Test
-    void chaResolvesHttpRiskHiddenBehindInterface() {
+    void GIVEN_an_http_call_hidden_behind_an_interface_WHEN_resolving_with_cha_THEN_the_risk_is_found() {
         // A @Transactional BO calls a NotificationService interface whose
         // concrete implementation uses RestTemplate. Without CHA the analyser
         // stops at the interface and misses the HTTP-inside-transaction risk.
@@ -288,7 +288,7 @@ class CallGraphExtractorTest {
     }
 
     @Test
-    void graphContainsNoSelfLoops() {
+    void GIVEN_a_recursive_method_WHEN_extracting_THEN_the_graph_has_no_self_loops() {
         String source = """
             package com.example;
 

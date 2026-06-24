@@ -56,7 +56,7 @@ class CouplingAnalyzerTest {
     // -----------------------------------------------------------------------
 
     @Test
-    void unstableHub_highCa_highInstability() {
+    void GIVEN_high_ca_and_high_instability_WHEN_classifying_THEN_it_is_an_unstable_hub() {
         // Ca=15, Ce=53 → I≈0.78 : many depend on it yet it depends on everything.
         var hubs = CouplingAnalyzer.classifyHotspots(List.of(
             pkg("app.bo", 15, 53, true))).unstableHubs();
@@ -66,7 +66,7 @@ class CouplingAnalyzerTest {
     }
 
     @Test
-    void extractionCandidate_lowCa_highInstability_substantialCe() {
+    void GIVEN_low_ca_high_instability_and_substantial_ce_WHEN_classifying_THEN_it_is_an_extraction_candidate() {
         // Ca=2, Ce=34 → I≈0.94 : few depend on it, large efferent surface.
         var candidates = CouplingAnalyzer.classifyHotspots(List.of(
             pkg("app.synch", 2, 34, true))).extractionCandidates();
@@ -76,7 +76,7 @@ class CouplingAnalyzerTest {
     }
 
     @Test
-    void stableCore_highCa_lowInstability() {
+    void GIVEN_high_ca_and_low_instability_WHEN_classifying_THEN_it_is_a_stable_core() {
         // Ca=17, Ce=7 → I≈0.29 : heavily depended on and already stable.
         var cores = CouplingAnalyzer.classifyHotspots(List.of(
             pkg("app.dao", 17, 7, true))).stableCores();
@@ -86,7 +86,7 @@ class CouplingAnalyzerTest {
     }
 
     @Test
-    void balancedPackage_onMainSequence_isNotClassified() {
+    void GIVEN_a_balanced_package_on_the_main_sequence_WHEN_classifying_THEN_it_is_not_classified() {
         // Ca=19, Ce=17 → I≈0.47 : neither hub, nor stable core, nor extractable.
         CouplingHotspots h = CouplingAnalyzer.classifyHotspots(List.of(
             pkg("app.model", 19, 17, true)));
@@ -97,7 +97,7 @@ class CouplingAnalyzerTest {
     }
 
     @Test
-    void libraryPackages_areExcluded() {
+    void GIVEN_a_library_package_WHEN_classifying_THEN_it_is_excluded() {
         // java.lang shape: Ca=31, Ce=0, but not application code.
         CouplingHotspots h = CouplingAnalyzer.classifyHotspots(List.of(
             pkg("java.lang", 31, 0, false)));
@@ -108,7 +108,7 @@ class CouplingAnalyzerTest {
     }
 
     @Test
-    void tinyUnstableLeaf_belowEfferentThreshold_isNotExtractionCandidate() {
+    void GIVEN_a_tiny_unstable_leaf_below_the_efferent_threshold_WHEN_classifying_THEN_it_is_not_an_extraction_candidate() {
         // Ca=0, Ce=2 → high instability but too small to be worth extracting.
         var candidates = CouplingAnalyzer.classifyHotspots(List.of(
             pkg("app.tiny", 0, 2, true))).extractionCandidates();
@@ -117,7 +117,7 @@ class CouplingAnalyzerTest {
     }
 
     @Test
-    void eachListIsSortedByDescendingScore() {
+    void GIVEN_classified_hotspots_WHEN_listing_THEN_each_list_is_sorted_by_descending_score() {
         var hubs = CouplingAnalyzer.classifyHotspots(List.of(
             pkg("app.small", 5, 12, true),   // Ca=5,  I≈0.71 → score ≈ 3.5
             pkg("app.big",   15, 53, true)   // Ca=15, I≈0.78 → score ≈ 11.7
@@ -128,7 +128,7 @@ class CouplingAnalyzerTest {
     }
 
     @Test
-    void archetypesArePartitioned_oneMixedInput() {
+    void GIVEN_a_mixed_input_WHEN_classifying_THEN_the_archetypes_are_partitioned() {
         CouplingHotspots h = CouplingAnalyzer.classifyHotspots(List.of(
             pkg("app.bo",    15, 53, true),  // unstable hub
             pkg("app.synch",  2, 34, true),  // extraction candidate

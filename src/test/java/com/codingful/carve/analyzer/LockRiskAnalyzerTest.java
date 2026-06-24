@@ -49,7 +49,7 @@ class LockRiskAnalyzerTest {
     // -----------------------------------------------------------------------
 
     @Test
-    void detectsDirectRequiresNew() {
+    void GIVEN_a_direct_requires_new_call_WHEN_analysing_THEN_a_nested_tx_risk_is_detected() {
         CallGraph cg = new CallGraph();
 
         MethodNode root = txNode("outerTx", TransactionPropagation.REQUIRED);
@@ -69,7 +69,7 @@ class LockRiskAnalyzerTest {
     }
 
     @Test
-    void detectsRequiresNewThroughIntermediaryChain() {
+    void GIVEN_a_requires_new_through_an_intermediary_chain_WHEN_analysing_THEN_a_nested_tx_risk_is_detected() {
         CallGraph cg = new CallGraph();
 
         MethodNode root   = txNode("process", TransactionPropagation.REQUIRED);
@@ -92,7 +92,7 @@ class LockRiskAnalyzerTest {
     }
 
     @Test
-    void deduplicatesSamePairFromMultiplePaths() {
+    void GIVEN_the_same_pair_reachable_via_multiple_paths_WHEN_analysing_THEN_it_is_deduplicated() {
         // root → middle1 → site  AND  root → middle2 → site
         // Should produce exactly one NestedTxRisk for (root, site).
         CallGraph cg = new CallGraph();
@@ -120,7 +120,7 @@ class LockRiskAnalyzerTest {
     }
 
     @Test
-    void scopeBoundaryBlocksTraversal_notSupported() {
+    void GIVEN_a_not_supported_boundary_WHEN_analysing_THEN_it_blocks_traversal() {
         // root(REQUIRED) → boundary(NOT_SUPPORTED) → site(REQUIRES_NEW)
         // NOT_SUPPORTED suspends the outer tx, so the scope does not continue.
         CallGraph cg = new CallGraph();
@@ -142,7 +142,7 @@ class LockRiskAnalyzerTest {
     }
 
     @Test
-    void scopeBoundaryBlocksTraversal_never() {
+    void GIVEN_a_never_boundary_WHEN_analysing_THEN_it_blocks_traversal() {
         CallGraph cg = new CallGraph();
 
         MethodNode root     = txNode("outerTx", TransactionPropagation.REQUIRED);
@@ -162,7 +162,7 @@ class LockRiskAnalyzerTest {
     }
 
     @Test
-    void supportsAndMandatoryAndNestedContinueScope() {
+    void GIVEN_supports_mandatory_and_nested_propagations_WHEN_analysing_THEN_they_continue_the_scope() {
         // SUPPORTS, MANDATORY and NESTED all join (or require) the existing tx
         // scope — traversal must continue through them.
         for (TransactionPropagation passthrough :
@@ -197,7 +197,7 @@ class LockRiskAnalyzerTest {
     }
 
     @Test
-    void nonTransactionalRootProducesNoRisk() {
+    void GIVEN_a_non_transactional_root_WHEN_analysing_THEN_no_risk() {
         CallGraph cg = new CallGraph();
 
         MethodNode root = plain("service");
@@ -214,7 +214,7 @@ class LockRiskAnalyzerTest {
     }
 
     @Test
-    void requiresNewRootDoesNotFlagItselfAsRisk() {
+    void GIVEN_a_requires_new_root_WHEN_analysing_THEN_it_does_not_flag_itself() {
         // A lone REQUIRES_NEW node is a tx root, not a nested one.
         CallGraph cg = new CallGraph();
 
@@ -232,7 +232,7 @@ class LockRiskAnalyzerTest {
     // -----------------------------------------------------------------------
 
     @Test
-    void detectsCyclicClusterWithTwoTransactionalNodes() {
+    void GIVEN_a_cyclic_cluster_with_two_transactional_nodes_WHEN_analysing_THEN_a_cyclic_tx_risk_is_detected() {
         MethodNode a = txNode("a", TransactionPropagation.REQUIRED);
         MethodNode b = txNode("b", TransactionPropagation.REQUIRED);
         MethodNode c = plain("c");
@@ -249,7 +249,7 @@ class LockRiskAnalyzerTest {
     }
 
     @Test
-    void ignoresClusterWithOnlyOneTransactionalNode() {
+    void GIVEN_a_cluster_with_only_one_transactional_node_WHEN_analysing_THEN_it_is_ignored() {
         MethodNode a = txNode("a", TransactionPropagation.REQUIRED);
         MethodNode b = plain("b");
 
@@ -261,7 +261,7 @@ class LockRiskAnalyzerTest {
     }
 
     @Test
-    void ignoresClusterWithNoTransactionalNodes() {
+    void GIVEN_a_cluster_with_no_transactional_nodes_WHEN_analysing_THEN_it_is_ignored() {
         MethodNode a = plain("a");
         MethodNode b = plain("b");
 
@@ -273,7 +273,7 @@ class LockRiskAnalyzerTest {
     }
 
     @Test
-    void sortsResultsByTransactionalCountDescending() {
+    void GIVEN_multiple_cyclic_risks_WHEN_analysing_THEN_results_are_sorted_by_transactional_count_descending() {
         MethodNode a = txNode("a", TransactionPropagation.REQUIRED);
         MethodNode b = txNode("b", TransactionPropagation.REQUIRED);
         MethodNode c = txNode("c", TransactionPropagation.REQUIRED);
@@ -291,7 +291,7 @@ class LockRiskAnalyzerTest {
     }
 
     @Test
-    void emptyClusterListProducesEmptyResult() {
+    void GIVEN_an_empty_cluster_list_WHEN_analysing_THEN_the_result_is_empty() {
         List<LockRiskAnalyzer.CyclicTxRisk> risks =
             new LockRiskAnalyzer(new CallGraph())
                 .findCyclicTransactionRisks(List.of());
