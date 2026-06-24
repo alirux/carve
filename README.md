@@ -13,7 +13,7 @@ Primary use case: supporting **modernisation of legacy Spring applications** by 
 
 ## Analysis
 
-> See **[FEATURES.md](FEATURES.md)** for a detailed explanation of every analysis — the algorithms used, why each matters for modernisation, and how to apply it.
+> See **[FEATURES.md](docs/FEATURES.md)** for a detailed explanation of every analysis — the algorithms used, why each matters for modernisation, and how to apply it.
 
 ### Transaction risks
 
@@ -73,7 +73,7 @@ On top of the raw numbers the analyser classifies each *application* package int
 | **`extractionCandidates`** | low `Ca` + high `I` | Low blast radius | Peel off as a service first |
 | **`stableCores`** | high `Ca` + low `I` | Shared kernel | Harden behind ports, extract last |
 
-Each entry has a `score` ranking it within its archetype. See [FEATURES.md §5b](FEATURES.md#5b-package-instability) for thresholds and the full scoring formulas.
+Each entry has a `score` ranking it within its archetype. See [FEATURES.md §5b](docs/FEATURES.md#5b-package-instability) for thresholds and the full scoring formulas.
 
 ---
 
