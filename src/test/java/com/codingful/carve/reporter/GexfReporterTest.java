@@ -153,6 +153,23 @@ class GexfReporterTest {
             COL_EXTERNAL_CALLS, COL_CYCLIC, COL_IN_RISK, COL_IN_LOCK_RISK, COL_METHODS);
     }
 
+    @Test
+    void GIVEN_a_model_WHEN_writing_gexf_THEN_the_copyright_note_and_generation_date_are_embedded()
+            throws Exception {
+        CallGraph cg = new CallGraph();
+        cg.addVertex(method("app", "A", "m").build());
+
+        StringWriter sw = new StringWriter();
+        new GexfReporter().write(sw, model(cg));
+        String gexf = sw.toString();
+
+        assertThat(gexf).contains(ReportMetadata.asXmlComment());
+
+        Document doc = writeAndParse(cg);
+        Element meta = (Element) doc.getElementsByTagName("meta").item(0);
+        assertThat(meta.getAttribute("lastmodifieddate")).isEqualTo(ReportMetadata.generatedOn().toString());
+    }
+
     // -----------------------------------------------------------------------
     // Nodes
     // -----------------------------------------------------------------------

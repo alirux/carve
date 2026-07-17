@@ -75,6 +75,14 @@ tasks.check {
     dependsOn(tasks.jacocoTestCoverageVerification)
 }
 
+// Exposes the build version at runtime via Package#getImplementationVersion(),
+// so generated reports can stamp themselves with the carve version that produced them.
+tasks.withType<Jar>().configureEach {
+    manifest {
+        attributes("Implementation-Version" to project.version)
+    }
+}
+
 tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
     archiveClassifier = ""
     mergeServiceFiles()

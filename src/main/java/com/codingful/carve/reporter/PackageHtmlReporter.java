@@ -46,9 +46,11 @@ public class PackageHtmlReporter {
         data.put("nodes", model.nodes());
         data.put("links", model.edges());
         data.put("multiProject", model.multiProject());
+        data.put("meta", ReportMetadata.asMap());
         String json = MAPPER.writeValueAsString(data);
 
-        writer.write(TEMPLATE.replace("{{DATA}}", json));
+        writer.write(TEMPLATE.replace("{{DATA}}", json)
+            .replace("{{META}}", ReportMetadata.asXmlComment()));
         writer.flush();
     }
 

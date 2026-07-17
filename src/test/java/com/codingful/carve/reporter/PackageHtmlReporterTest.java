@@ -74,4 +74,27 @@ class PackageHtmlReporterTest {
 
         assertThat(write(model(cg))).contains("\"multiProject\":true");
     }
+
+    @Test
+    void GIVEN_a_package_model_WHEN_writing_html_THEN_the_copyright_note_is_embedded() throws IOException {
+        CallGraph cg = new CallGraph();
+        cg.addVertex(method("app.web", "A", "m").build());
+
+        assertThat(write(model(cg))).contains(ReportMetadata.asXmlComment());
+    }
+
+    @Test
+    void GIVEN_a_package_model_WHEN_writing_html_THEN_the_visible_footer_and_its_data_are_present()
+            throws IOException {
+        CallGraph cg = new CallGraph();
+        cg.addVertex(method("app.web", "A", "m").build());
+
+        String html = write(model(cg));
+
+        assertThat(html).contains("id=\"report-footer\"");
+        assertThat(html).contains("\"toolLicense\":\"" + ReportMetadata.TOOL_LICENSE_SPDX + "\"");
+        assertThat(html).contains("\"toolRepository\":\"" + ReportMetadata.TOOL_REPOSITORY + "\"");
+        assertThat(html).contains("\"disclaimer\":");
+        assertThat(html).contains("with no warranty");
+    }
 }

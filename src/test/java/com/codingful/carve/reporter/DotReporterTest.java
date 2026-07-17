@@ -108,6 +108,16 @@ class DotReporterTest {
     }
 
     @Test
+    void GIVEN_a_graph_WHEN_writing_dot_THEN_first_line_is_the_copyright_comment() {
+        CallGraph cg = new CallGraph();
+        cg.addVertex(method("app", "A", "m").build());
+
+        String dot = write(new DotReporter(cg), false);
+
+        assertThat(dot).startsWith(ReportMetadata.asLineComment());
+    }
+
+    @Test
     void GIVEN_a_node_WHEN_writing_dot_THEN_id_is_quoted_and_label_has_class_and_method() {
         CallGraph cg = new CallGraph();
         cg.addVertex(method("app", "Svc", "run").build());

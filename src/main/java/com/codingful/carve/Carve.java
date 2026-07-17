@@ -106,6 +106,7 @@ public class Carve {
         Analyses  result = runAnalyses(cg, config);
         ReportWriter.write(cg, result, config);
         printSummary(cg, result, config, t0);
+        new ConsoleReporter(System.out).printFooter();
     }
 
     // -----------------------------------------------------------------------

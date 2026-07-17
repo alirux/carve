@@ -251,4 +251,17 @@ class ConsoleReporterTest {
         assertThat(out).contains(label("A", "a"), label("B", "b"));
         assertThat(out).contains(NESTED + " 0"); // nested section still printed, empty
     }
+
+    // -----------------------------------------------------------------------
+    // Footer
+    // -----------------------------------------------------------------------
+
+    @Test
+    void GIVEN_a_report_WHEN_printing_the_footer_THEN_tool_version_licence_source_and_disclaimer_are_shown() {
+        String out = capture(ConsoleReporter::printFooter);
+
+        assertThat(out).contains(ReportMetadata.generatedByLine());
+        assertThat(out).contains(ReportMetadata.toolCreditLine()); // tool copyright + licence + source repo
+        assertThat(out).contains(ReportMetadata.DISCLAIMER);
+    }
 }

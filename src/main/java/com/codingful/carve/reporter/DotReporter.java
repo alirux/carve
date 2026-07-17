@@ -25,6 +25,8 @@ import org.jgrapht.nio.Attribute;
 import org.jgrapht.nio.DefaultAttribute;
 import org.jgrapht.nio.dot.DOTExporter;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -72,6 +74,7 @@ public class DotReporter {
      * @param onlyApplicationCode if true, library stub nodes are omitted
      */
     public void write(Writer writer, boolean onlyApplicationCode) {
+        writeHeaderComment(writer);
         DOTExporter<MethodNode, DefaultEdge> exporter = new DOTExporter<>();
         exporter.setGraphAttributeProvider(() -> Map.of(
             "rankdir", DefaultAttribute.createAttribute("LR"),
@@ -98,6 +101,7 @@ public class DotReporter {
                                boolean onlyApplicationCode,
                                List<TransactionRisk> risks) {
 
+        writeHeaderComment(writer);
         Set<String> riskEdgeIds = risks.stream()
             .flatMap(r -> edgePairs(r.path()).stream())
             .collect(Collectors.toSet());
@@ -130,6 +134,14 @@ public class DotReporter {
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
+
+    private static void writeHeaderComment(Writer writer) {
+        try {
+            writer.write(ReportMetadata.asLineComment() + System.lineSeparator());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
 
     private Map<String, Attribute> nodeAttributes(MethodNode n) {
         Map<String, Attribute> attrs = new LinkedHashMap<>();

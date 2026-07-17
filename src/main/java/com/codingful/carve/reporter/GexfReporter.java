@@ -39,9 +39,11 @@ public class GexfReporter {
         PrintWriter w = new PrintWriter(writer);
 
         w.println("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+        w.println(ReportMetadata.asXmlComment());
         w.println("<gexf xmlns=\"http://gexf.net/1.2\" version=\"1.2\" "
             + "xmlns:viz=\"http://gexf.net/1.2/viz\">");
-        w.println("  <meta><creator>carve</creator>"
+        w.println("  <meta lastmodifieddate=\"" + ReportMetadata.generatedOn() + "\">"
+            + "<creator>carve</creator>"
             + "<description>Class-level call graph</description></meta>");
         w.println("  <graph defaultedgetype=\"directed\">");
 

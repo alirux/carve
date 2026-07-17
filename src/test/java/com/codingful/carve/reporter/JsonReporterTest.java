@@ -106,6 +106,24 @@ class JsonReporterTest {
     }
 
     @Test
+    void GIVEN_a_graph_WHEN_writing_json_THEN_meta_attributes_the_tool_with_version_license_repo_and_disclaimer()
+            throws IOException {
+        CallGraph cg = new CallGraph();
+        cg.addVertex(appIn("app", "a"));
+
+        Meta meta = writeEmpty(cg).meta();
+
+        assertThat(meta.generatedBy()).isEqualTo(ReportMetadata.TOOL_NAME);
+        assertThat(meta.version()).isEqualTo(ReportMetadata.version());
+        assertThat(meta.generatedOn()).isEqualTo(ReportMetadata.generatedOn().toString());
+        assertThat(meta.toolCopyright()).contains(ReportMetadata.TOOL_AUTHOR);
+        assertThat(meta.toolLicense()).isEqualTo(ReportMetadata.TOOL_LICENSE_SPDX);
+        assertThat(meta.toolLicenseUrl()).isEqualTo(ReportMetadata.TOOL_LICENSE_URL);
+        assertThat(meta.toolRepository()).isEqualTo(ReportMetadata.TOOL_REPOSITORY);
+        assertThat(meta.disclaimer()).isEqualTo(ReportMetadata.DISCLAIMER);
+    }
+
+    @Test
     void GIVEN_a_graph_WHEN_writing_json_THEN_summary_reports_node_and_edge_counts() throws IOException {
         CallGraph cg = new CallGraph();
         MethodNode tx = app("a").pkg("app.web").transactional().build();
@@ -251,12 +269,17 @@ class JsonReporterTest {
     // -----------------------------------------------------------------------
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record Report(Summary summary,
+    record Report(Meta meta,
+                  Summary summary,
                   List<Risk> transactionRisks,
                   List<PathDto> longestPaths,
                   List<Cluster> cyclicClusters,
                   Coupling packageCoupling,
                   LockRisks lockRisks) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record Meta(String generatedBy, String version, String generatedOn, String toolCopyright,
+                String toolLicense, String toolLicenseUrl, String toolRepository, String disclaimer) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Summary(int totalVertices, int totalEdges, int applicationMethods,

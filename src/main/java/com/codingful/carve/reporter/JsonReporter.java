@@ -64,6 +64,7 @@ public class JsonReporter {
         throws IOException {
 
         var report = new java.util.LinkedHashMap<String, Object>();
+        report.put("meta",             ReportMetadata.asMap());
         report.put("summary",          buildSummary());
         report.put("transactionRisks", risks.stream().map(this::riskToMap).toList());
         report.put("longestPaths",     longestPaths.stream().map(this::pathToMap).toList());

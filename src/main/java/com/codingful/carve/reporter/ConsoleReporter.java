@@ -71,6 +71,16 @@ public class ConsoleReporter {
         }
     }
 
+    /** Prints the provenance footer — tool version, licence, source, and no-warranty disclaimer. */
+    public void printFooter() {
+        out.println();
+        out.println(DIVIDER);
+        out.println(ReportMetadata.generatedByLine());
+        out.println(ReportMetadata.toolCreditLine());
+        out.println(ReportMetadata.DISCLAIMER);
+        out.println(DIVIDER);
+    }
+
     private void printRisk(TransactionRisk risk, int index, int total) {
         String types = risk.callTypes().stream()
             .map(ExternalCallType::name)
