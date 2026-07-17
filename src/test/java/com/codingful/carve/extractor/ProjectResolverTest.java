@@ -129,6 +129,31 @@ class ProjectResolverTest {
         assertThat(resolver.resolve(typeNamed(model, "Other"))).isEmpty();
     }
 
+    @Test
+    void GIVEN_a_lombok_annotated_type_WHEN_resolving_THEN_type_attributed_but_generated_methods_absent(@TempDir Path dir) throws IOException {
+        // Carve runs a plain Spoon launcher that parses source WITHOUT running
+        // Lombok (no delombok, setShouldCompile(false)). Consequences:
+        //   1. The *type* has a real .java on disk, so it is attributed normally.
+        //   2. The methods Lombok *would* generate (getName(), constructor, …) do
+        //      not exist in the model — they never become nodes, so they can never
+        //      reach resolve() and produce a spurious "" project.
+        Path tmp = dir.toRealPath();
+        Path root = tmp.resolve("core");
+        Files.createDirectories(root);
+        Files.writeString(root.resolve("Money.java"),
+            "import lombok.Data;\n@Data\npublic class Money { private java.math.BigDecimal amount; }");
+
+        ProjectResolver resolver = ProjectResolver.of(Map.of("core", root.toString()));
+        CtModel model = buildModel(root);
+        CtType<?> money = typeNamed(model, "Money");
+
+        // (1) The type itself is attributed to its source root.
+        assertThat(resolver.resolve(money)).isEqualTo("core");
+        // (2) No Lombok-generated accessor is present in the parsed model.
+        assertThat(money.getMethodsByName("getAmount")).isEmpty();
+        assertThat(money.getMethods()).isEmpty();
+    }
+
     // -----------------------------------------------------------------------
     // Helpers — real filesystem + real Spoon model
     // -----------------------------------------------------------------------
