@@ -374,6 +374,68 @@ class CallGraphExtractorTest {
     }
 
     @Test
+    void GIVEN_a_lombok_builder_chain_WHEN_extracting_THEN_the_dto_is_attributed_but_the_coupling_is_not_recovered(@TempDir Path dir) throws IOException {
+        // Known limit of the receiver-type fallback. A @Builder chain
+        //   Money.builder().amount(x).build()
+        // has no bindable declarations AND intermediate receivers whose type is
+        // itself unresolved (the generated MoneyBuilder). So amount()/build()
+        // degrade to "unknown" and the coupling Factory → Money is lost — unlike
+        // a getter on a typed receiver, which the fallback recovers.
+        //
+        // The DTO is still present and correctly attributed, because that comes
+        // from the type registry (its own source file), not from call resolution.
+        Path tmp = dir.toRealPath();
+        Path core = writePackagedClass(tmp.resolve("core"), "com/acme/core", "Money",
+            """
+            package com.acme.core;
+            import lombok.Builder;
+            @Builder
+            public class Money { private java.math.BigDecimal amount; }
+            """);
+        Path api = writePackagedClass(tmp.resolve("api"), "com/acme/api", "Factory",
+            """
+            package com.acme.api;
+            import com.acme.core.Money;
+            public class Factory {
+                public Money make() { return Money.builder().amount(null).build(); }
+            }
+            """);
+
+        Map<String, String> roots = new LinkedHashMap<>();
+        roots.put("api", api.toString());
+        roots.put("core", core.toString());
+        ProjectResolver resolver = ProjectResolver.of(roots);
+
+        Launcher launcher = new Launcher();
+        launcher.addInputResource(api.toString());
+        launcher.addInputResource(core.toString());
+        launcher.getEnvironment().setNoClasspath(true);
+        launcher.getEnvironment().setShouldCompile(false);
+        CtModel model = launcher.buildModel();
+
+        CallGraph cg = new CallGraph();
+        CallGraphExtractor extractor =
+            new CallGraphExtractor(cg, UserDefinedMarkers.EMPTY, resolver);
+        model.getAllTypes().forEach(extractor::scan);
+
+        MethodNode make = nodeByMethod(cg, "make");
+
+        // Attribution/presence: the DTO is registered and attributed regardless.
+        assertThat(cg.types())
+            .anyMatch(t -> t.fqn().equals("com.acme.core.Money") && t.project().equals("core"));
+
+        // Coupling: the builder chain never lands on Money, so make() has no
+        // application-code edge into the core package.
+        boolean couplingRecovered = cg.edges().stream().anyMatch(e ->
+            cg.getRaw().getEdgeSource(e).equals(make)
+            && cg.getRaw().getEdgeTarget(e).isApplicationCode()
+            && cg.getRaw().getEdgeTarget(e).getDeclaringTypeFqn().startsWith("com.acme.core"));
+        assertThat(couplingRecovered)
+            .as("builder-chain coupling to the DTO is a known gap")
+            .isFalse();
+    }
+
+    @Test
     void GIVEN_a_recursive_method_WHEN_extracting_THEN_the_graph_has_no_self_loops() {
         String source = """
             package com.example;
