@@ -29,9 +29,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import spoon.reflect.code.CtInvocation;
 import spoon.reflect.declaration.CtAnnotation;
+import spoon.reflect.declaration.CtAnnotationType;
 import spoon.reflect.declaration.CtClass;
+import spoon.reflect.declaration.CtEnum;
 import spoon.reflect.declaration.CtInterface;
 import spoon.reflect.declaration.CtMethod;
+import spoon.reflect.declaration.CtRecord;
 import spoon.reflect.declaration.CtType;
 import spoon.reflect.reference.CtExecutableReference;
 import spoon.reflect.reference.CtTypeReference;
@@ -118,6 +121,27 @@ public class CallGraphExtractor extends CtScanner {
         exitType();
     }
 
+    @Override
+    public <T extends Enum<?>> void visitCtEnum(CtEnum<T> ctEnum) {
+        enterType(ctEnum);
+        super.visitCtEnum(ctEnum);
+        exitType();
+    }
+
+    @Override
+    public void visitCtRecord(CtRecord record) {
+        enterType(record);
+        super.visitCtRecord(record);
+        exitType();
+    }
+
+    @Override
+    public <A extends java.lang.annotation.Annotation> void visitCtAnnotationType(CtAnnotationType<A> annotationType) {
+        enterType(annotationType);
+        super.visitCtAnnotationType(annotationType);
+        exitType();
+    }
+
     private void registerImplementor(CtClass<?> ctClass) {
         for (CtTypeReference<?> iface : ctClass.getSuperInterfaces()) {
             implementors.computeIfAbsent(iface.getQualifiedName(), k -> new HashSet<>())
@@ -126,6 +150,12 @@ public class CallGraphExtractor extends CtScanner {
     }
 
     private void enterType(CtType<?> type) {
+        // Attribute the type itself, up front and independent of its methods, so a
+        // method-less DTO (e.g. a pure Lombok @Data class) is still known and
+        // correctly attributed to its source root.
+        callGraph.registerType(type.getQualifiedName(), type.getSimpleName(),
+            projectResolver.resolve(type));
+
         currentClassComponentType = detectComponentType(type);
         TransactionInfo txInfo = extractTransactionInfo(type.getAnnotations());
         currentClassTransactional = txInfo.present();

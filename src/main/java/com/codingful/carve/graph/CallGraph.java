@@ -24,8 +24,12 @@ import org.jgrapht.Graph;
 import org.jgrapht.graph.DefaultDirectedGraph;
 import org.jgrapht.graph.DefaultEdge;
 
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Thin wrapper around a JGraphT directed graph of {@link MethodNode} vertices.
@@ -38,6 +42,17 @@ public class CallGraph {
     private final Graph<MethodNode, DefaultEdge> graph =
         new DefaultDirectedGraph<>(DefaultEdge.class);
 
+    /**
+     * Registry of every parsed application <em>type</em>, keyed by FQN, with its
+     * authoritative project attribution (resolved from the type's own source
+     * file). Independent of whether the type has any method nodes — so a
+     * method-less DTO (e.g. a pure Lombok {@code @Data} class) is still known
+     * and correctly attributed.
+     */
+    public record TypeInfo(String fqn, String label, String project) {}
+
+    private final Map<String, TypeInfo> types = new LinkedHashMap<>();
+
     // -----------------------------------------------------------------------
     // Mutations
     // -----------------------------------------------------------------------
@@ -45,6 +60,11 @@ public class CallGraph {
     /** Adds a vertex; silently ignores duplicates (JGraphT contract). */
     public void addVertex(MethodNode node) {
         graph.addVertex(node);
+    }
+
+    /** Records a parsed type and its project. First registration wins. */
+    public void registerType(String fqn, String label, String project) {
+        types.putIfAbsent(fqn, new TypeInfo(fqn, label, project));
     }
 
     /**
@@ -68,6 +88,9 @@ public class CallGraph {
 
     public Set<MethodNode> vertices()  { return graph.vertexSet(); }
     public Set<DefaultEdge> edges()    { return graph.edgeSet(); }
+
+    /** All parsed application types, in first-seen order. */
+    public Collection<TypeInfo> types() { return types.values(); }
 
     public Iterable<MethodNode> successors(MethodNode node) {
         return () -> graph.outgoingEdgesOf(node).stream()
@@ -109,10 +132,11 @@ public class CallGraph {
             .collect(Collectors.toSet());
     }
 
-    /** True when nodes from more than one named project are present. */
+    /** True when more than one named project is present across methods or types. */
     public boolean hasMultipleProjects() {
-        return graph.vertexSet().stream()
-            .map(MethodNode::getProjectName)
+        return Stream.concat(
+                graph.vertexSet().stream().map(MethodNode::getProjectName),
+                types.values().stream().map(TypeInfo::project))
             .filter(p -> !p.isEmpty())
             .distinct()
             .count() > 1;

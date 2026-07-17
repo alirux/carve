@@ -20,14 +20,25 @@ package com.codingful.carve.reporter;
 import com.codingful.carve.analyzer.LockRiskAnalyzer.CyclicTxRisk;
 import com.codingful.carve.analyzer.LockRiskAnalyzer.NestedTxRisk;
 import com.codingful.carve.analyzer.TransactionRisk;
+import com.codingful.carve.extractor.CallGraphExtractor;
+import com.codingful.carve.extractor.ProjectResolver;
+import com.codingful.carve.extractor.UserDefinedMarkers;
 import com.codingful.carve.graph.CallGraph;
 import com.codingful.carve.model.ExternalCallType;
 import com.codingful.carve.model.MethodNode;
 import com.codingful.carve.reporter.ClassGraphModel.Edge;
 import com.codingful.carve.reporter.ClassGraphModel.Node;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import spoon.Launcher;
+import spoon.reflect.CtModel;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static com.codingful.carve.support.TestNodes.app;
@@ -212,5 +223,75 @@ class ClassGraphModelTest {
         assertThat(model.multiProject()).isTrue();
         assertThat(node(model, "api.A").project()).isEqualTo("api");
         assertThat(node(model, "core.B").project()).isEqualTo("core");
+    }
+
+    // -----------------------------------------------------------------------
+    // Type-level attribution — real extractor + ProjectResolver + collapse
+    // -----------------------------------------------------------------------
+
+    @Test
+    void GIVEN_a_method_less_lombok_dto_that_nobody_calls_WHEN_collapsing_THEN_it_appears_attributed_to_its_project(@TempDir Path dir) throws IOException {
+        // A pure @Data DTO under "core" has no methods (Lombok is not run) and is
+        // referenced by nobody. Before type-level attribution it would be absent
+        // from the class graph entirely; now it appears as an isolated node,
+        // attributed to "core" from its own source file — no call-site guessing,
+        // no classpath, no delombok.
+        Path tmp = dir.toRealPath();
+        Path core = writePackagedClass(tmp.resolve("core"), "com/acme/core", "Money",
+            """
+            package com.acme.core;
+            import lombok.Data;
+            @Data
+            public class Money { private java.math.BigDecimal amount; }
+            """);
+        Path api = writePackagedClass(tmp.resolve("api"), "com/acme/api", "PriceController",
+            """
+            package com.acme.api;
+            public class PriceController { public void show() {} }
+            """);
+
+        Map<String, String> roots = new LinkedHashMap<>();
+        roots.put("api", api.toString());
+        roots.put("core", core.toString());
+        ProjectResolver resolver = ProjectResolver.of(roots);
+
+        Launcher launcher = new Launcher();
+        launcher.addInputResource(api.toString());
+        launcher.addInputResource(core.toString());
+        launcher.getEnvironment().setNoClasspath(true);
+        launcher.getEnvironment().setShouldCompile(false);
+        CtModel model = launcher.buildModel();
+
+        CallGraph cg = new CallGraph();
+        CallGraphExtractor extractor =
+            new CallGraphExtractor(cg, UserDefinedMarkers.EMPTY, resolver);
+        model.getAllTypes().forEach(extractor::scan);
+
+        ClassGraphModel classModel = collapse(cg);
+
+        assertThat(classModel.multiProject()).isTrue();
+
+        Node money = node(classModel, "com.acme.core.Money");
+        assertThat(money.project()).isEqualTo("core");
+        assertThat(money.label()).isEqualTo("Money");
+        assertThat(money.methods()).isZero();          // isolated: no method nodes
+        assertThat(classModel.edges()).noneMatch(e ->
+            e.source().equals("com.acme.core.Money")
+            || e.target().equals("com.acme.core.Money"));
+
+        // The controller under a different root is attributed to "api".
+        assertThat(node(classModel, "com.acme.api.PriceController").project()).isEqualTo("api");
+    }
+
+    // -----------------------------------------------------------------------
+    // Helpers for the real-extractor test
+    // -----------------------------------------------------------------------
+
+    private static Path writePackagedClass(Path root, String packagePath, String name, String source)
+            throws IOException {
+        Path pkgDir = root.resolve(packagePath);
+        Files.createDirectories(pkgDir);
+        Files.writeString(pkgDir.resolve(name + ".java"), source);
+        return root;
     }
 }
