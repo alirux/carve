@@ -27,6 +27,7 @@ import com.codingful.carve.util.Fqns;
 import org.jgrapht.graph.DefaultEdge;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import spoon.reflect.code.CtExpression;
 import spoon.reflect.code.CtInvocation;
 import spoon.reflect.declaration.CtAnnotation;
 import spoon.reflect.declaration.CtAnnotationType;
@@ -290,7 +291,7 @@ public class CallGraphExtractor extends CtScanner {
         CtExecutableReference<?> exec = invocation.getExecutable();
         if (exec == null) return null;
 
-        CtTypeReference<?> declaringRef = exec.getDeclaringType();
+        CtTypeReference<?> declaringRef = resolveDeclaringType(invocation, exec);
         String fqn   = declaringRef != null ? declaringRef.getQualifiedName() : "unknown";
         String pkg   = Fqns.packageOf(fqn);
         String cls   = declaringRef != null ? declaringRef.getSimpleName() : "Unknown";
@@ -314,6 +315,36 @@ public class CallGraphExtractor extends CtScanner {
 
             return node;
         });
+    }
+
+    /**
+     * Resolves the type that declares the invoked method.
+     *
+     * <p>Normally this is {@code exec.getDeclaringType()}. But when the callee
+     * cannot be bound — the classic case is a Lombok-generated accessor absent
+     * from the source model, which in {@code noClasspath} mode leaves the
+     * executable's declaring type null — we fall back to the static type of the
+     * receiver expression. That keeps the call edge pointed at the real owning
+     * type (e.g. a DTO), instead of dropping it onto an unresolved "unknown"
+     * node, whenever the receiver's type is known: a field, parameter or local
+     * of a declared type.
+     */
+    private static CtTypeReference<?> resolveDeclaringType(CtInvocation<?> invocation,
+                                                           CtExecutableReference<?> exec) {
+        CtTypeReference<?> declaringRef = exec.getDeclaringType();
+        if (declaringRef != null) return declaringRef;
+        try {
+            CtExpression<?> receiver = invocation.getTarget();
+            if (receiver != null) {
+                CtTypeReference<?> receiverType = receiver.getType();
+                if (receiverType != null
+                        && receiverType.getQualifiedName() != null
+                        && !receiverType.getQualifiedName().isBlank()) {
+                    return receiverType;
+                }
+            }
+        } catch (Exception ignored) { /* best-effort recovery */ }
+        return null;
     }
 
     // -----------------------------------------------------------------------
