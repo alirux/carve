@@ -9,13 +9,18 @@
   #graph { position:absolute; inset:0; }
   #panel { position:absolute; top:12px; left:12px; z-index:10; background:rgba(22,27,34,.92);
            border:1px solid #484f58; border-radius:8px; padding:12px 14px; max-width:260px;
-           font-size:13px;
+           font-size:13px; display:flex; flex-direction:column;
+           max-height:calc(100vh - 24px); overflow-y:auto;
            backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
            box-shadow:0 8px 32px rgba(0,0,0,.55); }
-  #panel h1 { font-size:14px; margin:0 0 8px; cursor:grab; user-select:none; }
+  #panel h1 { font-size:14px; margin:0 0 8px; cursor:grab; user-select:none; flex-shrink:0; }
   #panel h1:active { cursor:grabbing; }
   #panel label { display:block; margin:3px 0; cursor:pointer; }
-  #panel .sec { margin-top:10px; border-top:1px solid #30363d; padding-top:8px; }
+  #panel .sec { margin-top:10px; border-top:1px solid #30363d; padding-top:8px; flex-shrink:0; }
+  #projects { overflow-y:auto; overflow-x:hidden; max-height:32vh; padding-right:4px;
+              scrollbar-width:thin; scrollbar-color:#484f58 transparent; }
+  #projects::-webkit-scrollbar { width:6px; }
+  #projects::-webkit-scrollbar-thumb { background:#484f58; border-radius:3px; }
   #search { width:100%; box-sizing:border-box; background:#0d1117; color:#e6edf3;
             border:1px solid #30363d; border-radius:5px; padding:5px; margin-top:4px; }
   #search-suggestions { position:fixed; z-index:100; background:#161b22; border:1px solid #484f58;
@@ -280,6 +285,21 @@ const active = new Set(projects);
 const projDiv = document.getElementById('projects');
 if (DATA.multiProject) {
   projDiv.innerHTML = '<b>Projects</b>';
+  const projCheckboxes = [];
+  const allId = 'p_all';
+  projDiv.insertAdjacentHTML('beforeend',
+    `<label style="display:flex;align-items:center;gap:4px;font-weight:bold">
+       <input type="checkbox" id="${allId}" checked>All / none
+     </label>`);
+  const allCb = document.getElementById(allId);
+  allCb.addEventListener('change', e => {
+    active.clear();
+    projCheckboxes.forEach(cb => {
+      cb.checked = e.target.checked;
+      if (e.target.checked) active.add(cb.dataset.project);
+    });
+    apply();
+  });
   projects.forEach(p => {
     const id = 'p_' + p;
     const color = projColor[p] || '#9ab4dc';
@@ -288,8 +308,12 @@ if (DATA.multiProject) {
          <input type="checkbox" id="${id}" checked>
          <span class="dot" style="background:${color}"></span>${p||'(none)'}
        </label>`);
-    document.getElementById(id).addEventListener('change', e => {
+    const cb = document.getElementById(id);
+    cb.dataset.project = p;
+    projCheckboxes.push(cb);
+    cb.addEventListener('change', e => {
       if (e.target.checked) active.add(p); else active.delete(p);
+      allCb.checked = projCheckboxes.every(c => c.checked);
       apply();
     });
   });
