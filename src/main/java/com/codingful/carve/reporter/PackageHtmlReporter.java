@@ -46,6 +46,7 @@ public class PackageHtmlReporter {
         data.put("nodes", model.nodes());
         data.put("links", model.edges());
         data.put("multiProject", model.multiProject());
+        data.put("lombokAnnotatedTypes", model.lombokAnnotatedTypes());
         data.put("meta", ReportMetadata.asMap());
         String json = MAPPER.writeValueAsString(data);
 

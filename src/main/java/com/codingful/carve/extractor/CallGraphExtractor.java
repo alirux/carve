@@ -156,6 +156,7 @@ public class CallGraphExtractor extends CtScanner {
         // correctly attributed to its source root.
         callGraph.registerType(type.getQualifiedName(), type.getSimpleName(),
             projectResolver.resolve(type));
+        if (hasLombokAnnotation(type)) callGraph.markLombokType();
 
         currentClassComponentType = detectComponentType(type);
         TransactionInfo txInfo = extractTransactionInfo(type.getAnnotations());
@@ -350,6 +351,15 @@ public class CallGraphExtractor extends CtScanner {
     // -----------------------------------------------------------------------
     // Annotation helpers
     // -----------------------------------------------------------------------
+
+    /** True when the type carries any {@code lombok.*} annotation. */
+    private static boolean hasLombokAnnotation(CtType<?> type) {
+        for (CtAnnotation<? extends Annotation> ann : type.getAnnotations()) {
+            String fqn = ann.getAnnotationType().getQualifiedName();
+            if (fqn != null && fqn.startsWith("lombok.")) return true;
+        }
+        return false;
+    }
 
     private static SpringComponentType detectComponentType(CtType<?> type) {
         for (CtAnnotation<? extends Annotation> ann : type.getAnnotations()) {

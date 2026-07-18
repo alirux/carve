@@ -52,16 +52,20 @@ public final class PackageGraphModel {
     private final List<Node> nodes;
     private final List<Edge> edges;
     private final boolean multiProject;
+    private final int lombokAnnotatedTypes;
 
-    private PackageGraphModel(List<Node> nodes, List<Edge> edges, boolean multiProject) {
+    private PackageGraphModel(List<Node> nodes, List<Edge> edges,
+                             boolean multiProject, int lombokAnnotatedTypes) {
         this.nodes = nodes;
         this.edges = edges;
         this.multiProject = multiProject;
+        this.lombokAnnotatedTypes = lombokAnnotatedTypes;
     }
 
-    public List<Node> nodes()     { return nodes; }
-    public List<Edge> edges()     { return edges; }
-    public boolean multiProject() { return multiProject; }
+    public List<Node> nodes()          { return nodes; }
+    public List<Edge> edges()          { return edges; }
+    public boolean multiProject()      { return multiProject; }
+    public int lombokAnnotatedTypes()  { return lombokAnnotatedTypes; }
 
     // -----------------------------------------------------------------------
     // Factory
@@ -124,7 +128,8 @@ public final class PackageGraphModel {
             edges.add(new Edge(key.substring(0, sep), key.substring(sep + 1), w));
         });
 
-        return new PackageGraphModel(nodes, edges, classModel.multiProject());
+        return new PackageGraphModel(nodes, edges,
+            classModel.multiProject(), classModel.lombokAnnotatedTypes());
     }
 
     // -----------------------------------------------------------------------

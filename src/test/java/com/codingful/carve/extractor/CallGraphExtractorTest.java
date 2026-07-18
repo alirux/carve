@@ -436,6 +436,30 @@ class CallGraphExtractorTest {
     }
 
     @Test
+    void GIVEN_a_lombok_annotated_type_WHEN_extracting_THEN_lombok_is_detected() {
+        CallGraph cg = parse("Money", """
+            package com.example;
+            import lombok.Data;
+            @Data
+            public class Money { private java.math.BigDecimal amount; }
+            """);
+
+        assertThat(cg.lombokDetected()).isTrue();
+        assertThat(cg.lombokAnnotatedTypeCount()).isEqualTo(1);
+    }
+
+    @Test
+    void GIVEN_no_lombok_WHEN_extracting_THEN_lombok_is_not_detected() {
+        CallGraph cg = parse("Plain", """
+            package com.example;
+            public class Plain { public void go() {} }
+            """);
+
+        assertThat(cg.lombokDetected()).isFalse();
+        assertThat(cg.lombokAnnotatedTypeCount()).isZero();
+    }
+
+    @Test
     void GIVEN_a_recursive_method_WHEN_extracting_THEN_the_graph_has_no_self_loops() {
         String source = """
             package com.example;

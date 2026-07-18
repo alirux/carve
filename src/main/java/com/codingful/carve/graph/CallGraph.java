@@ -53,6 +53,9 @@ public class CallGraph {
 
     private final Map<String, TypeInfo> types = new LinkedHashMap<>();
 
+    /** Count of parsed types carrying a Lombok annotation (see {@link #lombokDetected}). */
+    private int lombokAnnotatedTypes;
+
     // -----------------------------------------------------------------------
     // Mutations
     // -----------------------------------------------------------------------
@@ -65,6 +68,11 @@ public class CallGraph {
     /** Records a parsed type and its project. First registration wins. */
     public void registerType(String fqn, String label, String project) {
         types.putIfAbsent(fqn, new TypeInfo(fqn, label, project));
+    }
+
+    /** Records that a parsed type carries a Lombok annotation. */
+    public void markLombokType() {
+        lombokAnnotatedTypes++;
     }
 
     /**
@@ -91,6 +99,17 @@ public class CallGraph {
 
     /** All parsed application types, in first-seen order. */
     public Collection<TypeInfo> types() { return types.values(); }
+
+    /** Number of parsed types carrying a Lombok annotation. */
+    public int lombokAnnotatedTypeCount() { return lombokAnnotatedTypes; }
+
+    /**
+     * True when Lombok annotations were seen in the analysed source. Lombok's
+     * generated members are not modelled (no delombok), so coupling via
+     * generated accessors — and especially via {@code @Builder} chains — may be
+     * incomplete. See {@code docs/LOMBOK.md}.
+     */
+    public boolean lombokDetected() { return lombokAnnotatedTypes > 0; }
 
     public Iterable<MethodNode> successors(MethodNode node) {
         return () -> graph.outgoingEdgesOf(node).stream()

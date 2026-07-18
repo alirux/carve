@@ -146,6 +146,11 @@ public class Carve {
         model.getAllTypes().forEach(extractor::scan);
         extractor.resolveInterfaceCalls();
         log.info("Call graph: {}  [{}]", callGraph, elapsed(tExtract));
+        if (callGraph.lombokDetected()) {
+            log.warn("Lombok detected on {} type(s): generated members are not modelled, "
+                + "so coupling via generated accessors — and especially @Builder chains — "
+                + "may be incomplete. See docs/LOMBOK.md.", callGraph.lombokAnnotatedTypeCount());
+        }
         return callGraph;
     }
 
@@ -203,19 +208,25 @@ public class Carve {
             + (c.writeDot() ? "\n           " + dotFile.toAbsolutePath() : "");
 
         int appCount = cg.applicationNodes().size();
+        String lombokNote = cg.lombokDetected()
+            ? String.format("%n           ⚠ Lombok detected on %d type(s): coupling via generated "
+                + "accessors / @Builder chains may be incomplete (see docs/LOMBOK.md).",
+                cg.lombokAnnotatedTypeCount())
+            : "";
         System.out.printf("""
             %n=== Analysis complete ===%n
             Vertices : %d  (application: %d, stubs: %d)
             Edges    : %d
             Tx risks : %d
             Total    : %s%n
-            Reports  : %s%n
+            Reports  : %s%s%n
             """,
             cg.vertexCount(), appCount, cg.vertexCount() - appCount,
             cg.edgeCount(),
             r.risks().size(),
             elapsed(t0),
-            reports
+            reports,
+            lombokNote
         );
     }
 

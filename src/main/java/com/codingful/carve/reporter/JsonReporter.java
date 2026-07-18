@@ -90,6 +90,7 @@ public class JsonReporter {
         map.put("applicationMethods",   appCount);
         map.put("transactionalMethods", txCount);
         map.put("libraryStubs",         callGraph.vertexCount() - appCount);
+        map.put("lombokAnnotatedTypes", callGraph.lombokAnnotatedTypeCount());
 
         // Multi-project: list named projects and per-project method counts
         if (callGraph.hasMultipleProjects()) {

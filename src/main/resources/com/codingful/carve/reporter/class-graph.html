@@ -70,6 +70,7 @@
 <div id="panel">
   <h1 title="Drag to move">⠿ Class graph</h1>
   <div id="stats" class="muted"></div>
+  <div id="lombok-note" style="display:none;color:#d29922;font-size:12px;margin-top:4px"></div>
   <div class="sec" id="projects"></div>
   <div class="sec">
     <label><input type="checkbox" id="onlyRisk"> Only risk classes</label>
@@ -492,6 +493,13 @@ function updateLegend() {
   }
 }
 updateLegend();
+
+if (DATA.lombokAnnotatedTypes > 0) {
+  const ln = document.getElementById('lombok-note');
+  ln.style.display = 'block';
+  ln.textContent = `⚠ Lombok on ${DATA.lombokAnnotatedTypes} type(s): coupling via generated `
+    + `accessors / @Builder chains may be incomplete.`;
+}
 
 apply();
 
