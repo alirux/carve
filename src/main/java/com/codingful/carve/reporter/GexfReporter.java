@@ -32,6 +32,11 @@ import java.util.List;
  * <p>Every aggregated attribute (project, transactional, external, externalCalls,
  * cyclic, inRisk, inLockRisk, methods) is also written as a Gephi attribute column,
  * so the user can partition, filter, and re-colour by any of them inside Gephi.
+ *
+ * <p>Edges carry {@code edgeKind} ({@code direct}/{@code cha}) and {@code chaWeight},
+ * so couplings that exist only because of Class Hierarchy Analysis — an
+ * over-approximation — can be filtered out before reading the graph as a
+ * dependency map.
  */
 public class GexfReporter {
 
@@ -56,6 +61,12 @@ public class GexfReporter {
         w.println("      <attribute id=\"5\" title=\"inRisk\" type=\"boolean\"/>");
         w.println("      <attribute id=\"6\" title=\"inLockRisk\" type=\"boolean\"/>");
         w.println("      <attribute id=\"7\" title=\"methods\" type=\"integer\"/>");
+        w.println("    </attributes>");
+
+        // Edge columns let the user filter out CHA-inferred couplings in Gephi.
+        w.println("    <attributes class=\"edge\">");
+        w.println("      <attribute id=\"0\" title=\"edgeKind\" type=\"string\"/>");
+        w.println("      <attribute id=\"1\" title=\"chaWeight\" type=\"integer\"/>");
         w.println("    </attributes>");
 
         w.println("    <nodes>");
@@ -85,8 +96,13 @@ public class GexfReporter {
         List<ClassGraphModel.Edge> edges = model.edges();
         for (int i = 0; i < edges.size(); i++) {
             ClassGraphModel.Edge e = edges.get(i);
-            w.printf("      <edge id=\"%d\" source=\"%s\" target=\"%s\" weight=\"%d\"/>%n",
+            w.printf("      <edge id=\"%d\" source=\"%s\" target=\"%s\" weight=\"%d\">%n",
                 i, esc(e.source()), esc(e.target()), e.weight());
+            w.println("        <attvalues>");
+            w.printf("          <attvalue for=\"0\" value=\"%s\"/>%n", e.kind());
+            w.printf("          <attvalue for=\"1\" value=\"%d\"/>%n", e.chaWeight());
+            w.println("        </attvalues>");
+            w.println("      </edge>");
         }
         w.println("    </edges>");
 

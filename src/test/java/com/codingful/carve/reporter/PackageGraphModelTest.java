@@ -194,6 +194,32 @@ class PackageGraphModelTest {
     }
 
     @Test
+    void GIVEN_a_package_coupling_resting_only_on_cha_WHEN_collapsing_THEN_the_edge_is_marked_cha() {
+        CallGraph cg = new CallGraph();
+        cg.addChaEdge(method(WEB, "A", "1").build(), method(SVC, "B", "1").build());
+
+        assertThat(collapse(cg).edges()).singleElement()
+            .satisfies(e -> {
+                assertThat(e.kind()).isEqualTo("cha");
+                assertThat(e.chaWeight()).isEqualTo(1);
+            });
+    }
+
+    @Test
+    void GIVEN_a_package_coupling_with_one_direct_class_edge_WHEN_collapsing_THEN_the_edge_is_direct() {
+        CallGraph cg = new CallGraph();
+        cg.addEdge(method(WEB, "A", "1").build(), method(SVC, "B", "1").build());
+        cg.addChaEdge(method(WEB, "C", "1").build(), method(SVC, "D", "1").build());
+
+        assertThat(collapse(cg).edges()).singleElement()
+            .satisfies(e -> {
+                assertThat(e.kind()).isEqualTo("direct");
+                assertThat(e.weight()).isEqualTo(2);
+                assertThat(e.chaWeight()).isEqualTo(1);
+            });
+    }
+
+    @Test
     void GIVEN_an_intra_package_class_edge_WHEN_collapsing_THEN_no_package_edge_is_produced() {
         CallGraph cg = new CallGraph();
         cg.addEdge(method(APP, "A", "1").build(), method(APP, "B", "1").build());

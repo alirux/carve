@@ -84,7 +84,7 @@ public class DotReporter {
 
         exporter.setVertexIdProvider(n -> quote(n.getId()));
         exporter.setVertexAttributeProvider(n -> nodeAttributes(n));
-        exporter.setEdgeAttributeProvider(e -> Map.of());
+        exporter.setEdgeAttributeProvider(DotReporter.this::edgeAttributes);
 
         var graph = onlyApplicationCode
             ? appSubgraph()
@@ -124,7 +124,7 @@ public class DotReporter {
                     "penwidth", DefaultAttribute.createAttribute("2.0")
                 );
             }
-            return Map.of();
+            return edgeAttributes(e);
         });
 
         var graph = onlyApplicationCode ? appSubgraph() : callGraph.getRaw();
@@ -134,6 +134,20 @@ public class DotReporter {
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
+
+    /**
+     * Draws CHA-inferred edges dashed and grey: they are an over-approximation
+     * (every visible implementation of the called interface), not a call site
+     * present in the source.
+     */
+    private Map<String, Attribute> edgeAttributes(DefaultEdge e) {
+        if (!callGraph.isChaEdge(e)) return Map.of();
+        return Map.of(
+            "style", DefaultAttribute.createAttribute("dashed"),
+            "color", DefaultAttribute.createAttribute("gray60"),
+            "tooltip", DefaultAttribute.createAttribute("inferred by class hierarchy analysis")
+        );
+    }
 
     private static void writeHeaderComment(Writer writer) {
         try {

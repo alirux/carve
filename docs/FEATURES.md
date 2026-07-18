@@ -114,6 +114,22 @@ CHA closes this gap. After scanning, for every edge whose target is an interface
 
 A single pass handles the common one-level case (BO → DAO interface → DAO impl). Deeper interface-to-interface chains are then traversed naturally by the BFS/DFS in the downstream analyses, because the edges CHA added are ordinary graph edges.
 
+#### Why CHA edges are marked
+
+CHA is an over-approximation: it links a virtual call to *every* implementation it can see, including implementations that call site can never reach. This is deliberate — under-reporting a transaction risk is worse than over-reporting one — but it makes a raw CHA edge weaker evidence than an observed call site.
+
+Every inferred edge is therefore tagged, and the tag survives the collapse to class and package level:
+
+| Output | How CHA edges appear |
+|---|---|
+| console | `Edges : N  (M inferred by class hierarchy analysis)` |
+| `analysis.json` | `summary.chaEdges` |
+| `class-graph.gexf` | edge columns `edgeKind` (`direct`/`cha`) and `chaWeight` — filterable in Gephi |
+| `call-graph.dot` | dashed grey edges |
+| `class-graph.html`, `package-graph.html` | amber links, a *Hide inferred (CHA) edges* filter, an inferred count in the header, and a help note in the legend |
+
+A collapsed edge counts as `cha` only when **every** underlying method call was inferred; one real call site makes it `direct`. Read as a dependency map — comparing against `pom.xml` / `build.gradle`, for instance — the `cha` edges should be excluded.
+
 #### Why it matters for modernisation
 
 This is what makes the transaction analysis trustworthy on real Spring code. The motivating bug: the tool initially reported **zero** transaction risks for a codebase that clearly had them, precisely because the risky calls sat behind DAO interfaces. CHA was the fix.
@@ -488,6 +504,7 @@ Be aware of these when interpreting results during a modernisation effort:
 - **Java version** — Spoon 11.2.1 / ECJ 3.41.0 parses up to Java 23. Java 24/25 sources await a future Spoon upgrade.
 - **Spring AOP self-invocation** — `@Transactional` only takes effect through the Spring proxy. A `this.otherMethod()` call bypasses the proxy and its annotation. The analyser cannot detect self-invocation and conservatively assumes the annotation is honoured (may over-report).
 - **Dynamic dispatch beyond the source tree** — CHA resolves interface calls to implementations *in the analysed source*. Third-party interfaces, dynamic proxies, Spring AOP advice, and reflection are not tracked (may under-report).
+- **CHA across independent `--source` roots** — the type universe spans every `--source` root at once, so a call on a shared interface (especially `Function`/`Consumer`/`Supplier`) gains edges to implementations in projects the caller has no build dependency on. These phantom couplings inflate the package-coupling report; exclude `edgeKind: cha` edges before reading it as a build-dependency map.
 - **Cyclic depth approximation** — the longest-path search undercounts depth through strongly-connected regions by design (to guarantee termination on simple paths).
 - **Encoding** — legacy codebases not in UTF-8 (e.g. ISO-8859-1) must pass `--encoding` to avoid `MalformedInputException`.
 - **Multi-project classpath** — modules included via `--source` are fully resolved from source. Only third-party JARs (Spring, JPA, vendor SDKs) should go on `--classpath`; never put a `--source` module's compiled JAR on `--classpath` as well — that duplicates types and can confuse resolution.

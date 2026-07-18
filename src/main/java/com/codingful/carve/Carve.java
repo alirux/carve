@@ -216,13 +216,13 @@ public class Carve {
         System.out.printf("""
             %n=== Analysis complete ===%n
             Vertices : %d  (application: %d, stubs: %d)
-            Edges    : %d
+            Edges    : %d  (%d inferred by class hierarchy analysis)
             Tx risks : %d
             Total    : %s%n
             Reports  : %s%s%n
             """,
             cg.vertexCount(), appCount, cg.vertexCount() - appCount,
-            cg.edgeCount(),
+            cg.edgeCount(), cg.chaEdgeCount(),
             r.risks().size(),
             elapsed(t0),
             reports,

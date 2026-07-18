@@ -33,6 +33,20 @@
   .dot { display:inline-block; width:11px; height:11px; border-radius:50%;
          margin-right:6px; vertical-align:middle; flex-shrink:0; }
   .muted { color:#8b949e; font-size:11px; }
+  .help { display:inline; }
+  .help > summary { display:inline-block; width:13px; height:13px; line-height:13px;
+           text-align:center; border-radius:50%; border:1px solid #6e7681; color:#8b949e;
+           font-size:9px; font-weight:bold; cursor:help; margin-left:5px;
+           vertical-align:middle; list-style:none; }
+  .help > summary::-webkit-details-marker { display:none; }
+  .help > summary:hover { border-color:#adbac7; color:#adbac7; }
+  .help[open] > summary { border-color:#adbac7; color:#adbac7; }
+  .help .help-body { margin:6px 0 2px; padding:8px 10px; background:#0d1117;
+           border:1px solid #30363d; border-radius:6px; color:#c9d1d9; font-size:11px;
+           font-weight:normal; line-height:1.5; }
+  .help .help-body b { color:#e6edf3; }
+  .help .help-body code { background:#161b22; padding:0 3px; border-radius:3px;
+           font-size:10px; color:#adbac7; word-break:break-all; }
   #node-detail table { width:100%; border-collapse:collapse; margin-top:6px; font-size:12px; }
   #node-detail td { padding:2px 0; vertical-align:top; }
   #node-detail td:first-child { color:#8b949e; width:78px; }
@@ -75,6 +89,7 @@
     <label><input type="checkbox" id="onlyRisk"> Only risk packages</label>
     <label><input type="checkbox" id="onlyLockRisk"> Only lock risk packages</label>
     <label><input type="checkbox" id="hlRisk" checked> Highlight risks (red)</label>
+    <label><input type="checkbox" id="hideCha"> Hide inferred (CHA) edges</label>
   </div>
   <div class="sec" id="hotspot-controls">
     <label><input type="checkbox" id="onlyHotspot"> Only modernisation hotspots</label>
@@ -157,6 +172,10 @@ function flyTo(node) {
     { x: node.x*(1+d/r), y: node.y*(1+d/r), z: node.z*(1+d/r) }, node, 800);
 }
 
+// True when every underlying call behind this link was inferred by class
+// hierarchy analysis, so the coupling may not exist at runtime.
+function chaOnly(l) { return l.weight > 0 && l.chaWeight === l.weight; }
+
 const elGraph = document.getElementById('graph');
 const Graph = ForceGraph3D()(elGraph)
   .backgroundColor('#0d1117')
@@ -168,7 +187,10 @@ const Graph = ForceGraph3D()(elGraph)
   .nodeRelSize(4)
   .nodeVal(nodeVal)
   .nodeOpacity(0.88)
-  .linkColor(() => 'rgba(188,198,212,0.40)')
+  // Couplings resting entirely on class hierarchy analysis get their own hue:
+  // they are inferred over-approximations, not call sites in the source. Colour
+  // rather than opacity, because .linkOpacity() below flattens any alpha here.
+  .linkColor(l => chaOnly(l) ? '#c98a2e' : 'rgba(188,198,212,0.40)')
   .linkOpacity(0.4)
   .linkWidth(l => Math.min(0.8 + l.weight * 0.15, 6))
   .linkDirectionalArrowLength(4)
@@ -176,7 +198,7 @@ const Graph = ForceGraph3D()(elGraph)
   .linkDirectionalArrowColor(() => 'rgba(210,218,228,0.6)')
   .linkDirectionalParticles(l => Math.min(Math.ceil(l.weight / 3), 4))
   .linkDirectionalParticleWidth(1.8)
-  .linkDirectionalParticleColor(() => '#d7dee8')
+  .linkDirectionalParticleColor(l => chaOnly(l) ? '#c98a2e' : '#d7dee8')
   .linkDirectionalParticleSpeed(0.005)
   .warmupTicks(100)
   .cooldownTicks(150)
@@ -337,6 +359,7 @@ if (DATA.multiProject) {
 function apply() {
   const onlyRisk     = document.getElementById('onlyRisk').checked;
   const onlyLockRisk = document.getElementById('onlyLockRisk').checked;
+  const hideCha      = document.getElementById('hideCha').checked;
   const onlyHotspot  = document.getElementById('onlyHotspot').checked;
   const nodes = DATA.nodes.filter(n =>
     active.has(n.project) &&
@@ -346,13 +369,17 @@ function apply() {
   const ids = new Set(nodes.map(n => n.id));
   const links = DATA.links.filter(l =>
     ids.has(typeof l.source==='object'?l.source.id:l.source) &&
-    ids.has(typeof l.target==='object'?l.target.id:l.target));
+    ids.has(typeof l.target==='object'?l.target.id:l.target) &&
+    (!hideCha || !chaOnly(l)));
   Graph.graphData({ nodes, links });
+  const chaCount = links.filter(chaOnly).length;
   document.getElementById('stats').textContent =
-    `${nodes.length} packages · ${links.length} edges`;
+    `${nodes.length} packages · ${links.length} edges`
+    + (chaCount ? ` · ${chaCount} inferred` : '');
 }
 document.getElementById('onlyRisk').addEventListener('change', apply);
 document.getElementById('onlyLockRisk').addEventListener('change', apply);
+document.getElementById('hideCha').addEventListener('change', apply);
 document.getElementById('onlyHotspot').addEventListener('change', apply);
 document.getElementById('hlRisk').addEventListener('change', () => Graph.nodeColor(nodeColor));
 document.getElementById('hlHotspot').addEventListener('change', () => Graph.nodeColor(nodeColor));
@@ -469,6 +496,27 @@ function hotspotLegend() {
     `<label><span class="dot" style="background:${a.color}"></span>${a.label}</label>`).join('');
   return `<div style="margin-top:6px"><b>◆ Modernisation hotspots</b>${rows}</div>`;
 }
+// Link colours are independent of the node colouring mode, so the legend entry
+// is appended in every mode.
+function linkLegend() {
+  return `<div style="margin-top:6px"><b>Edges</b><details class="help"><summary title="What are inferred edges?">?</summary><div class="help-body">
+       <b>Class hierarchy analysis (CHA)</b> resolves a call made on an interface
+       or abstract type to the implementations visible in the analysed source.
+       It is what lets the tool see through a DAO interface into the class that
+       actually touches the database.<br><br>
+       It over-approximates on purpose: a call site is linked to <b>every</b>
+       implementation found, even ones it can never reach at runtime — and with
+       several <code>--source</code> roots, even implementations in projects that
+       share no build dependency.<br><br>
+       An edge is amber only when <b>every</b> underlying call was inferred this
+       way; one real call site keeps it grey. Reading the graph as a dependency
+       map (against <code>pom.xml</code> / <code>build.gradle</code>), leave the
+       amber ones out — or hide them with the filter above.</div></details>
+     <label><span class="dot" style="background:rgba(188,198,212,0.7)"></span>direct call site</label>
+     <label><span class="dot" style="background:#c98a2e"></span>inferred by class hierarchy analysis</label>
+     <div class="muted">inferred edges may not exist at runtime</div></div>`;
+}
+
 function updateLegend() {
   const legend = document.getElementById('legend');
   if (groupProject) {
@@ -487,6 +535,7 @@ function updateLegend() {
        <label><span class="dot" style="background:#9ab4dc"></span>plain</label>`;
   }
   legend.innerHTML += hotspotLegend();
+  legend.innerHTML += linkLegend();
 }
 if (!HAS_HOTSPOTS) document.getElementById('hotspot-controls').style.display = 'none';
 updateLegend();

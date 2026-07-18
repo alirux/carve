@@ -57,6 +57,53 @@ class CallGraphTest {
         assertThat(g.edgeCount()).isZero();
     }
 
+    @Test
+    void GIVEN_a_cha_edge_WHEN_added_THEN_it_is_tagged_as_inferred() {
+        CallGraph g = new CallGraph();
+        MethodNode caller = app("a").build();
+        MethodNode impl   = app("b").build();
+
+        assertThat(g.addChaEdge(caller, impl)).isTrue();
+
+        assertThat(g.chaEdgeCount()).isEqualTo(1);
+        assertThat(g.isChaEdge(g.edges().iterator().next())).isTrue();
+    }
+
+    @Test
+    void GIVEN_an_edge_already_observed_at_a_call_site_WHEN_cha_rediscovers_it_THEN_it_stays_direct() {
+        // Direct evidence is the stronger claim: CHA must not downgrade an edge
+        // that a real call site already produced.
+        CallGraph g = new CallGraph();
+        MethodNode caller = app("a").build();
+        MethodNode callee = app("b").build();
+        g.addEdge(caller, callee);
+
+        assertThat(g.addChaEdge(caller, callee)).isFalse();
+
+        assertThat(g.edgeCount()).isEqualTo(1);
+        assertThat(g.chaEdgeCount()).isZero();
+        assertThat(g.isChaEdge(g.edges().iterator().next())).isFalse();
+    }
+
+    @Test
+    void GIVEN_a_cha_self_loop_WHEN_added_THEN_it_is_skipped_and_not_tagged() {
+        CallGraph g = new CallGraph();
+        MethodNode a = app("a").build();
+
+        assertThat(g.addChaEdge(a, app("a").build())).isFalse();
+
+        assertThat(g.edgeCount()).isZero();
+        assertThat(g.chaEdgeCount()).isZero();
+    }
+
+    @Test
+    void GIVEN_only_direct_edges_WHEN_counting_cha_edges_THEN_the_count_is_zero() {
+        CallGraph g = new CallGraph();
+        g.addEdge(app("a").build(), app("b").build());
+        assertThat(g.chaEdgeCount()).isZero();
+        assertThat(g.isChaEdge(g.edges().iterator().next())).isFalse();
+    }
+
     // -----------------------------------------------------------------------
     // Traversal
     // -----------------------------------------------------------------------

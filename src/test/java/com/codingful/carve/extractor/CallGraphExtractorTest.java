@@ -21,6 +21,7 @@ import com.codingful.carve.graph.CallGraph;
 import com.codingful.carve.model.MethodNode;
 import com.codingful.carve.model.SpringComponentType;
 import com.codingful.carve.model.TransactionPropagation;
+import org.jgrapht.graph.DefaultEdge;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import spoon.Launcher;
@@ -30,6 +31,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -291,6 +293,136 @@ class CallGraphExtractorTest {
         assertThat(risksAfterCha).isNotEmpty();
         assertThat(risksAfterCha.get(0).callTypes())
             .contains(com.codingful.carve.model.ExternalCallType.HTTP);
+    }
+
+    @Test
+    void GIVEN_a_call_resolved_through_an_interface_WHEN_resolving_with_cha_THEN_only_the_inferred_edge_is_tagged() {
+        // The caller's own call site (OrderBO → NotificationService.notify) is direct
+        // evidence; the jump to the implementation is CHA's over-approximation, and
+        // only that one carries the tag.
+        String source = """
+            package com.example;
+
+            interface NotificationService {
+                void notify(String payload);
+            }
+
+            class RestNotificationService implements NotificationService {
+                public void notify(String payload) {}
+            }
+
+            class OrderBO {
+                private NotificationService notificationService;
+
+                public void placeOrder() {
+                    notificationService.notify("order placed");
+                }
+            }
+            """;
+
+        Launcher launcher = new Launcher();
+        launcher.addInputResource(new spoon.support.compiler.VirtualFile(source, "Order.java"));
+        launcher.getEnvironment().setNoClasspath(true);
+        launcher.getEnvironment().setShouldCompile(false);
+        CtModel model = launcher.buildModel();
+
+        CallGraph cg = new CallGraph();
+        CallGraphExtractor extractor = new CallGraphExtractor(cg);
+        model.getAllTypes().forEach(extractor::scan);
+
+        assertThat(cg.chaEdgeCount()).isZero();     // nothing inferred before CHA runs
+
+        extractor.resolveInterfaceCalls();
+
+        assertThat(cg.chaEdgeCount()).isEqualTo(1);
+        assertThat(chaTargets(cg)).containsExactly("com.example.RestNotificationService");
+    }
+
+    /** Declaring types reached by an edge that exists only because of CHA. */
+    private static List<String> chaTargets(CallGraph cg) {
+        return cg.edges().stream()
+            .filter(cg::isChaEdge)
+            .map(e -> cg.getRaw().getEdgeTarget(e).getDeclaringTypeFqn())
+            .toList();
+    }
+
+    @Test
+    void GIVEN_independent_source_roots_sharing_an_interface_WHEN_resolving_with_cha_THEN_the_cross_project_edge_is_inferred_and_tagged(@TempDir Path dir) throws IOException {
+        // The reproducer from reports/30prj/ISSUE-cha-phantom-edges.md, pinned.
+        //
+        // "alpha" and "beta" are separately-built projects with no dependency and
+        // no reference between them: all they share is the JDK Function interface.
+        // Because the type universe spans every --source root at once, CHA still
+        // links alpha's transform.apply(...) to beta's implementor — a coupling
+        // that cannot happen at runtime.
+        //
+        // This test asserts today's behaviour: the phantom edge exists, and it is
+        // recognisable as CHA-inferred so consumers can drop it from coupling
+        // metrics. Scoping CHA to a --source boundary would remove the edge
+        // outright; this test is expected to change shape when that lands.
+        Path tmp = dir.toRealPath();
+        Path alpha = writePackagedClass(tmp.resolve("alpha"), "com/example/alpha", "AlphaService",
+            """
+            package com.example.alpha;
+            import java.util.function.Function;
+            public class AlphaService {
+                private Function<String, String> transform;
+                public String run(String input) {
+                    return transform.apply(input);   // virtual call on Function
+                }
+            }
+            """);
+        Path beta = writePackagedClass(tmp.resolve("beta"), "com/example/beta", "BetaHandler",
+            """
+            package com.example.beta;
+            import java.util.function.Function;
+            public class BetaHandler implements Function<String, String> {
+                @Override
+                public String apply(String s) { return s.toUpperCase(); }
+            }
+            """);
+
+        Map<String, String> roots = new LinkedHashMap<>();
+        roots.put("alpha", alpha.toString());
+        roots.put("beta", beta.toString());
+        ProjectResolver resolver = ProjectResolver.of(roots);
+
+        Launcher launcher = new Launcher();
+        launcher.addInputResource(alpha.toString());
+        launcher.addInputResource(beta.toString());
+        launcher.getEnvironment().setNoClasspath(true);   // no --classpath, as in the report
+        launcher.getEnvironment().setShouldCompile(false);
+        CtModel model = launcher.buildModel();
+
+        CallGraph cg = new CallGraph();
+        CallGraphExtractor extractor =
+            new CallGraphExtractor(cg, UserDefinedMarkers.EMPTY, resolver);
+        model.getAllTypes().forEach(extractor::scan);
+
+        // Nothing links the two projects until CHA runs.
+        assertThat(edgeBetween(cg, "com.example.alpha.AlphaService", "com.example.beta.BetaHandler"))
+            .as("no cross-project edge before CHA")
+            .isEmpty();
+
+        extractor.resolveInterfaceCalls();
+
+        var phantom = edgeBetween(cg,
+            "com.example.alpha.AlphaService", "com.example.beta.BetaHandler");
+        assertThat(phantom)
+            .as("CHA over-approximates across independent source roots")
+            .isPresent();
+        assertThat(cg.isChaEdge(phantom.get()))
+            .as("the phantom edge is tagged, so coupling metrics can exclude it")
+            .isTrue();
+        assertThat(cg.chaEdgeCount()).isEqualTo(1);
+    }
+
+    /** The edge between two types, if the graph holds one (regardless of method). */
+    private static Optional<DefaultEdge> edgeBetween(CallGraph cg, String sourceFqn, String targetFqn) {
+        return cg.edges().stream()
+            .filter(e -> cg.getRaw().getEdgeSource(e).getDeclaringTypeFqn().equals(sourceFqn)
+                      && cg.getRaw().getEdgeTarget(e).getDeclaringTypeFqn().equals(targetFqn))
+            .findFirst();
     }
 
     @Test

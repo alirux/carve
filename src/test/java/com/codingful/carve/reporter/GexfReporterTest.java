@@ -59,6 +59,10 @@ class GexfReporterTest {
     private static final String COL_IN_LOCK_RISK   = "inLockRisk";
     private static final String COL_METHODS        = "methods";
 
+    // Edge attribute-column titles.
+    private static final String COL_EDGE_KIND  = "edgeKind";
+    private static final String COL_CHA_WEIGHT = "chaWeight";
+
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
@@ -144,13 +148,25 @@ class GexfReporterTest {
         Element graph = (Element) doc.getElementsByTagName(EL_GRAPH).item(0);
         assertThat(graph.getAttribute("defaultedgetype")).isEqualTo("directed");
 
+        assertThat(columnsOf(doc, "node")).containsExactly(COL_PROJECT, COL_TRANSACTIONAL,
+            COL_EXTERNAL, COL_EXTERNAL_CALLS, COL_CYCLIC, COL_IN_RISK, COL_IN_LOCK_RISK,
+            COL_METHODS);
+        assertThat(columnsOf(doc, "edge")).containsExactly(COL_EDGE_KIND, COL_CHA_WEIGHT);
+    }
+
+    /** Titles of the attribute columns declared for {@code node} or {@code edge}. */
+    private static List<String> columnsOf(Document doc, String attributeClass) {
         List<String> columns = new ArrayList<>();
-        NodeList attrs = doc.getElementsByTagName(EL_ATTRIBUTE);
-        for (int i = 0; i < attrs.getLength(); i++) {
-            columns.add(((Element) attrs.item(i)).getAttribute("title"));
+        NodeList blocks = doc.getElementsByTagName("attributes");
+        for (int i = 0; i < blocks.getLength(); i++) {
+            Element block = (Element) blocks.item(i);
+            if (!attributeClass.equals(block.getAttribute("class"))) continue;
+            NodeList attrs = block.getElementsByTagName(EL_ATTRIBUTE);
+            for (int j = 0; j < attrs.getLength(); j++) {
+                columns.add(((Element) attrs.item(j)).getAttribute("title"));
+            }
         }
-        assertThat(columns).containsExactly(COL_PROJECT, COL_TRANSACTIONAL, COL_EXTERNAL,
-            COL_EXTERNAL_CALLS, COL_CYCLIC, COL_IN_RISK, COL_IN_LOCK_RISK, COL_METHODS);
+        return columns;
     }
 
     @Test
@@ -276,6 +292,31 @@ class GexfReporterTest {
         assertThat(e.getAttribute("source")).isEqualTo("app.A");
         assertThat(e.getAttribute("target")).isEqualTo("app.B");
         assertThat(e.getAttribute("weight")).isEqualTo("2");
+    }
+
+    @Test
+    void GIVEN_a_cha_inferred_call_WHEN_writing_gexf_THEN_the_edge_is_labelled_cha() throws Exception {
+        CallGraph cg = new CallGraph();
+        cg.addChaEdge(method("app", "A", "1").build(), method("app", "B", "1").build());
+
+        Document doc = writeAndParse(cg);
+
+        Element e = (Element) doc.getElementsByTagName(EL_EDGE).item(0);
+        assertThat(attvalue(doc, e, COL_EDGE_KIND)).isEqualTo("cha");
+        assertThat(attvalue(doc, e, COL_CHA_WEIGHT)).isEqualTo("1");
+    }
+
+    @Test
+    void GIVEN_a_call_site_in_the_source_WHEN_writing_gexf_THEN_the_edge_is_labelled_direct()
+            throws Exception {
+        CallGraph cg = new CallGraph();
+        cg.addEdge(method("app", "A", "1").build(), method("app", "B", "1").build());
+
+        Document doc = writeAndParse(cg);
+
+        Element e = (Element) doc.getElementsByTagName(EL_EDGE).item(0);
+        assertThat(attvalue(doc, e, COL_EDGE_KIND)).isEqualTo("direct");
+        assertThat(attvalue(doc, e, COL_CHA_WEIGHT)).isEqualTo("0");
     }
 
     @Test

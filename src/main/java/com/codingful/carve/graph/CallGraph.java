@@ -25,6 +25,7 @@ import org.jgrapht.graph.DefaultDirectedGraph;
 import org.jgrapht.graph.DefaultEdge;
 
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -52,6 +53,16 @@ public class CallGraph {
     public record TypeInfo(String fqn, String label, String project) {}
 
     private final Map<String, TypeInfo> types = new LinkedHashMap<>();
+
+    /**
+     * Edges introduced by Class Hierarchy Analysis rather than by a call site in
+     * the source. They are over-approximations: CHA links a virtual call to every
+     * implementation it can see, so some of these calls cannot happen at runtime.
+     * Keeping them identifiable lets consumers exclude them from coupling metrics.
+     *
+     * <p>{@link DefaultEdge} has identity semantics, so a plain set is enough.
+     */
+    private final Set<DefaultEdge> chaEdges = new HashSet<>();
 
     /** Count of parsed types carrying a Lombok annotation (see {@link #lombokDetected}). */
     private int lombokAnnotatedTypes;
@@ -87,6 +98,25 @@ public class CallGraph {
         graph.addEdge(caller, callee);
     }
 
+    /**
+     * Adds an edge derived from Class Hierarchy Analysis, tagging it as such.
+     *
+     * <p>An edge that already exists is left tagged as it was: a call the source
+     * makes directly stays {@code direct} even when CHA rediscovers it, since the
+     * direct evidence is the stronger claim.
+     *
+     * @return true when a new edge was created and tagged as CHA-derived
+     */
+    public boolean addChaEdge(MethodNode caller, MethodNode callee) {
+        if (caller.equals(callee)) return false;
+        graph.addVertex(caller);
+        graph.addVertex(callee);
+        DefaultEdge edge = graph.addEdge(caller, callee);
+        if (edge == null) return false;              // already present as a direct edge
+        chaEdges.add(edge);
+        return true;
+    }
+
     // -----------------------------------------------------------------------
     // Read-only access
     // -----------------------------------------------------------------------
@@ -96,6 +126,15 @@ public class CallGraph {
 
     public Set<MethodNode> vertices()  { return graph.vertexSet(); }
     public Set<DefaultEdge> edges()    { return graph.edgeSet(); }
+
+    /**
+     * True when this edge was added by Class Hierarchy Analysis instead of being
+     * observed at a call site. See {@link #addChaEdge}.
+     */
+    public boolean isChaEdge(DefaultEdge edge) { return chaEdges.contains(edge); }
+
+    /** Number of edges that exist only because of Class Hierarchy Analysis. */
+    public int chaEdgeCount() { return chaEdges.size(); }
 
     /** All parsed application types, in first-seen order. */
     public Collection<TypeInfo> types() { return types.values(); }

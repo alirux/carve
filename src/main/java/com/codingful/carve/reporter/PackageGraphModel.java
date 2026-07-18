@@ -47,7 +47,22 @@ public final class PackageGraphModel {
         double score
     ) {}
 
-    public record Edge(String source, String target, int weight) {}
+    /**
+     * A package-to-package edge, weighted by the number of underlying class-level
+     * calls.
+     *
+     * @param chaWeight how many of those calls exist only because of Class
+     *                  Hierarchy Analysis (see {@link #kind()})
+     */
+    public record Edge(String source, String target, int weight, int chaWeight) {
+
+        /**
+         * {@code "cha"} when this coupling rests entirely on Class Hierarchy
+         * Analysis, {@code "direct"} otherwise. A {@code cha} edge is an
+         * over-approximation and should not be read as a build dependency.
+         */
+        public String kind() { return weight > 0 && chaWeight == weight ? "cha" : "direct"; }
+    }
 
     private final List<Node> nodes;
     private final List<Edge> edges;
@@ -102,11 +117,14 @@ public final class PackageGraphModel {
 
         // Aggregate class-level edges to package-level
         Map<String, Integer> edgeWeights = new LinkedHashMap<>();
+        Map<String, Integer> chaWeights  = new HashMap<>();
         for (ClassGraphModel.Edge ce : classModel.edges()) {
             String sp = pkgKey(ce.source());
             String tp = pkgKey(ce.target());
             if (sp.equals(tp)) continue;
-            edgeWeights.merge(sp + " " + tp, ce.weight(), Integer::sum);
+            String key = sp + " " + tp;
+            edgeWeights.merge(key, ce.weight(), Integer::sum);
+            chaWeights.merge(key, ce.chaWeight(), Integer::sum);
         }
 
         List<Node> nodes = new ArrayList<>(byPkg.size());
@@ -125,7 +143,8 @@ public final class PackageGraphModel {
         List<Edge> edges = new ArrayList<>(edgeWeights.size());
         edgeWeights.forEach((key, w) -> {
             int sep = key.indexOf(' ');
-            edges.add(new Edge(key.substring(0, sep), key.substring(sep + 1), w));
+            edges.add(new Edge(key.substring(0, sep), key.substring(sep + 1),
+                w, chaWeights.getOrDefault(key, 0)));
         });
 
         return new PackageGraphModel(nodes, edges,

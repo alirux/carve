@@ -87,6 +87,7 @@ public class JsonReporter {
         var map = new java.util.LinkedHashMap<String, Object>();
         map.put("totalVertices",        callGraph.vertexCount());
         map.put("totalEdges",           callGraph.edgeCount());
+        map.put("chaEdges",             callGraph.chaEdgeCount());
         map.put("applicationMethods",   appCount);
         map.put("transactionalMethods", txCount);
         map.put("libraryStubs",         callGraph.vertexCount() - appCount);

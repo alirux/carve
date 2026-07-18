@@ -173,6 +173,34 @@ class ClassGraphModelTest {
     }
 
     @Test
+    void GIVEN_only_cha_calls_between_two_classes_WHEN_collapsing_THEN_the_edge_is_marked_cha() {
+        CallGraph cg = new CallGraph();
+        cg.addChaEdge(method("app", "A", "1").build(), method("app", "B", "1").build());
+
+        Edge e = collapse(cg).edges().get(0);
+
+        assertThat(e.kind()).isEqualTo("cha");
+        assertThat(e.weight()).isEqualTo(1);
+        assertThat(e.chaWeight()).isEqualTo(1);
+    }
+
+    @Test
+    void GIVEN_a_class_pair_joined_by_both_a_direct_and_a_cha_call_WHEN_collapsing_THEN_the_edge_is_direct() {
+        // One real call site is enough to make the coupling real, whatever CHA
+        // adds on top of it.
+        MethodNode b1 = method("app", "B", "1").build();
+        CallGraph cg = new CallGraph();
+        cg.addEdge(method("app", "A", "1").build(), b1);
+        cg.addChaEdge(method("app", "A", "2").build(), b1);
+
+        Edge e = collapse(cg).edges().get(0);
+
+        assertThat(e.kind()).isEqualTo("direct");
+        assertThat(e.weight()).isEqualTo(2);
+        assertThat(e.chaWeight()).isEqualTo(1);
+    }
+
+    @Test
     void GIVEN_intra_class_calls_WHEN_collapsing_THEN_no_edge_is_produced() {
         CallGraph cg = new CallGraph();
         cg.addEdge(method("app", "A", "1").build(), method("app", "A", "2").build());

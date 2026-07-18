@@ -244,10 +244,11 @@ public class CallGraphExtractor extends CtScanner {
                 if (concreteNodes == null) continue;
 
                 for (MethodNode concrete : concreteNodes) {
-                    callGraph.addEdge(caller, concrete);
-                    resolved++;
-                    log.debug("CHA: {} → {} (via {})",
-                        caller.getId(), concrete.getId(), target.getDeclaringTypeFqn());
+                    if (callGraph.addChaEdge(caller, concrete)) {
+                        resolved++;
+                        log.debug("CHA: {} → {} (via {})",
+                            caller.getId(), concrete.getId(), target.getDeclaringTypeFqn());
+                    }
                 }
             }
         }
