@@ -36,7 +36,7 @@ Nodes carry the Spring metadata the analyses need:
 
 The graph is constructed by `CallGraphExtractor`, a Spoon [`CtScanner`](https://spoon.gforge.inria.fr/) that walks the AST of every source type. Construction is **two-phase**:
 
-1. **Scan phase** — for each `visitCtMethod` the extractor creates/updates a node and reads its annotations; for each `visitCtInvocation` it adds an edge to the *statically declared* target type, and tags the target node if its declaring class matches a known external-call client. It also records, for every concrete class, which interfaces it implements (the data CHA needs in phase 2).
+1. **Scan phase** — for each `visitCtMethod` the extractor creates/updates a node and reads its annotations; for each `visitCtInvocation` it adds an edge to the *statically declared* target type, and tags the target node if its declaring class matches a known external-call client. It also records, for every concrete class, which interfaces it implements (the data class hierarchy analysis — CHA, see [§2b](#2b-class-hierarchy-analysis-cha--interface-resolution) — needs in phase 2).
 
 2. **Resolution phase** — `resolveInterfaceCalls()` runs once after all types are scanned. See [§2](#2-framework-awareness-markers--interface-resolution-cha).
 
@@ -129,6 +129,8 @@ Every inferred edge is therefore tagged, and the tag survives the collapse to cl
 | `class-graph.html`, `package-graph.html` | amber links, a *Hide inferred (CHA) edges* filter, an inferred count in the header, and a help note in the legend |
 
 A collapsed edge counts as `cha` only when **every** underlying method call was inferred; one real call site makes it `direct`. Read as a dependency map — comparing against `pom.xml` / `build.gradle`, for instance — the `cha` edges should be excluded.
+
+See [CHA.md](CHA.md) for the full behaviour: why the over-approximation is deliberate, the phantom couplings it creates on multi-`--source` runs, and what is *not* filtered.
 
 #### Why it matters for modernisation
 
@@ -503,8 +505,9 @@ Be aware of these when interpreting results during a modernisation effort:
 
 - **Java version** — Spoon 11.2.1 / ECJ 3.41.0 parses up to Java 23. Java 24/25 sources await a future Spoon upgrade.
 - **Spring AOP self-invocation** — `@Transactional` only takes effect through the Spring proxy. A `this.otherMethod()` call bypasses the proxy and its annotation. The analyser cannot detect self-invocation and conservatively assumes the annotation is honoured (may over-report).
-- **Dynamic dispatch beyond the source tree** — CHA resolves interface calls to implementations *in the analysed source*. Third-party interfaces, dynamic proxies, Spring AOP advice, and reflection are not tracked (may under-report).
-- **CHA across independent `--source` roots** — the type universe spans every `--source` root at once, so a call on a shared interface (especially `Function`/`Consumer`/`Supplier`) gains edges to implementations in projects the caller has no build dependency on. These phantom couplings inflate the package-coupling report; exclude `edgeKind: cha` edges before reading it as a build-dependency map.
+- **Dynamic dispatch beyond the source tree** — class hierarchy analysis (CHA) resolves interface calls to implementations *in the analysed source*. Third-party interfaces, dynamic proxies, Spring AOP advice, and reflection are not tracked (may under-report).
+- **CHA (class hierarchy analysis) across independent `--source` roots** — the type universe spans every `--source` root at once, so a call on a shared interface (especially `Function`/`Consumer`/`Supplier`) gains edges to implementations in projects the caller has no build dependency on. These phantom couplings inflate the package-coupling report; exclude `edgeKind: cha` edges before reading it as a build-dependency map. See [CHA.md](CHA.md).
+- **Coupling metrics include inferred edges** — the package-coupling section (afferent/efferent coupling, instability, and the modernisation hotspots derived from them) is computed over *every* edge, CHA-inferred ones included. `summary.chaEdges` reports how many edges are inferred overall, but not which couplings rest on them: to find out, filter `edgeKind` in the GEXF or use the *Hide inferred (CHA) edges* toggle in the HTML viewers.
 - **Cyclic depth approximation** — the longest-path search undercounts depth through strongly-connected regions by design (to guarantee termination on simple paths).
 - **Encoding** — legacy codebases not in UTF-8 (e.g. ISO-8859-1) must pass `--encoding` to avoid `MalformedInputException`.
 - **Multi-project classpath** — modules included via `--source` are fully resolved from source. Only third-party JARs (Spring, JPA, vendor SDKs) should go on `--classpath`; never put a `--source` module's compiled JAR on `--classpath` as well — that duplicates types and can confuse resolution.
