@@ -22,7 +22,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
 
       - name: Build, test and verify coverage
-        run: ./gradlew check
+        run: ./gradlew build
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
