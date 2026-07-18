@@ -14,6 +14,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0   # annotated tag objects, so the tag message is readable below
 
       - uses: actions/setup-java@v5
         with:
@@ -32,9 +34,15 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.VERSION }}
 
+      # The annotated tag's message body becomes the release notes, so the
+      # summary is written once — when tagging — instead of by hand afterwards.
+      - name: Extract tag message
+        run: git tag -l --format='%(contents:body)' "$GITHUB_REF_NAME" > RELEASE_BODY.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           name: ${{ github.ref_name }}
-          generate_release_notes: true
+          body_path: RELEASE_BODY.md
+          generate_release_notes: true   # appended below the tag message
           files: build/libs/carve-*.jar
