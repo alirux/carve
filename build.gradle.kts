@@ -94,3 +94,7 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
 tasks.named("startScripts") {
     dependsOn(tasks.named("shadowJar"))
 }
+
+tasks.named("startShadowScripts") {
+    dependsOn(tasks.named("jar"))
+}
