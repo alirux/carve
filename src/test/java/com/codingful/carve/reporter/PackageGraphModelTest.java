@@ -220,6 +220,41 @@ class PackageGraphModelTest {
     }
 
     @Test
+    void GIVEN_class_edges_of_differing_ambiguity_WHEN_collapsing_THEN_the_package_edge_takes_the_worst() {
+        // Fan-outs are not additive and averaging would let the sound class edge
+        // dilute the guessed one, so the package coupling reports the maximum.
+        CallGraph cg = new CallGraph();
+        cg.addChaEdge(method(WEB, "A", "1").build(), method(SVC, "B", "1").build(), 1);
+        cg.addChaEdge(method(WEB, "C", "1").build(), method(SVC, "D", "1").build(), 6);
+
+        assertThat(collapse(cg).edges()).singleElement()
+            .satisfies(e -> assertThat(e.implFanOut()).isEqualTo(6));
+    }
+
+    @Test
+    void GIVEN_a_package_coupling_resting_on_exact_inferences_WHEN_collapsing_THEN_the_fan_out_stays_one() {
+        // Inferred throughout, but CHA never had a choice: the coupling is sound.
+        CallGraph cg = new CallGraph();
+        cg.addChaEdge(method(WEB, "A", "1").build(), method(SVC, "B", "1").build(), 1);
+        cg.addChaEdge(method(WEB, "C", "1").build(), method(SVC, "D", "1").build(), 1);
+
+        assertThat(collapse(cg).edges()).singleElement()
+            .satisfies(e -> {
+                assertThat(e.kind()).isEqualTo("cha");
+                assertThat(e.implFanOut()).isEqualTo(1);
+            });
+    }
+
+    @Test
+    void GIVEN_a_package_coupling_with_no_inferred_calls_WHEN_collapsing_THEN_the_fan_out_is_zero() {
+        CallGraph cg = new CallGraph();
+        cg.addEdge(method(WEB, "A", "1").build(), method(SVC, "B", "1").build());
+
+        assertThat(collapse(cg).edges()).singleElement()
+            .satisfies(e -> assertThat(e.implFanOut()).isZero());
+    }
+
+    @Test
     void GIVEN_an_intra_package_class_edge_WHEN_collapsing_THEN_no_package_edge_is_produced() {
         CallGraph cg = new CallGraph();
         cg.addEdge(method(APP, "A", "1").build(), method(APP, "B", "1").build());

@@ -238,17 +238,27 @@ public class CallGraphExtractor extends CtScanner {
             Set<CtClass<?>> impls = implementors.get(target.getDeclaringTypeFqn());
             if (impls == null) continue;
 
+            // Collect before adding: the fan-out is the number of implementing classes
+            // that actually declare this method, which is only known once every
+            // candidate has been checked. Implementors that do not declare it (they
+            // inherit it, or implement a different part of the interface) are not
+            // alternatives at this call site and must not inflate the count.
+            List<MethodNode> candidates = new ArrayList<>();
+            int implementingClasses = 0;
             for (CtClass<?> impl : impls) {
                 String key = impl.getQualifiedName() + "#" + target.getMethodName();
                 List<MethodNode> concreteNodes = byTypeAndMethod.get(key);
                 if (concreteNodes == null) continue;
+                implementingClasses++;
+                candidates.addAll(concreteNodes);
+            }
 
-                for (MethodNode concrete : concreteNodes) {
-                    if (callGraph.addChaEdge(caller, concrete)) {
-                        resolved++;
-                        log.debug("CHA: {} → {} (via {})",
-                            caller.getId(), concrete.getId(), target.getDeclaringTypeFqn());
-                    }
+            for (MethodNode concrete : candidates) {
+                if (callGraph.addChaEdge(caller, concrete, implementingClasses)) {
+                    resolved++;
+                    log.debug("CHA: {} → {} (via {}, {} implementation(s))",
+                        caller.getId(), concrete.getId(),
+                        target.getDeclaringTypeFqn(), implementingClasses);
                 }
             }
         }

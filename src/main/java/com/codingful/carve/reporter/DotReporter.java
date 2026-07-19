@@ -47,6 +47,16 @@ import java.util.stream.Stream;
  *   <li>White  — plain application code</li>
  * </ul>
  *
+ * Edges:
+ * <ul>
+ *   <li>Solid black — a call site in the source</li>
+ *   <li>Dashed grey — inferred by class hierarchy analysis, resolving the only
+ *       implementation of the interface; sound</li>
+ *   <li>Dashed amber — inferred with several implementations to choose between;
+ *       at most one such edge is real (see {@code docs/CHA.md} §6b)</li>
+ *   <li>Solid red — on a transaction-risk path ({@link #writeWithRisks})</li>
+ * </ul>
+ *
  * Usage: {@code dot -Tsvg output.dot -o output.svg}
  */
 public class DotReporter {
@@ -136,16 +146,32 @@ public class DotReporter {
     // -----------------------------------------------------------------------
 
     /**
-     * Draws CHA-inferred edges dashed and grey: they are an over-approximation
-     * (every visible implementation of the called interface), not a call site
-     * present in the source.
+     * Draws CHA-inferred edges dashed, because they are not call sites present in
+     * the source — and colours them by how much the inference is worth.
+     *
+     * <p>Grey when CHA resolved the only implementation of the interface: inferred,
+     * but exact, and no less trustworthy than a solid edge. Amber when it was
+     * choosing between several, so at most one of those edges is real. Amber is the
+     * over-approximation; grey is not, and colouring both the same overstates the
+     * imprecision several-fold. The hue matches the HTML viewers.
+     *
+     * <p>Unlike the collapsed class and package graphs, this export is per method
+     * call, so the fan-out needs no aggregation: it is the count CHA recorded at
+     * that call site, and the tooltip carries it.
+     *
+     * @see com.codingful.carve.graph.CallGraph#chaFanOut
      */
     private Map<String, Attribute> edgeAttributes(DefaultEdge e) {
         if (!callGraph.isChaEdge(e)) return Map.of();
+        int fanOut = callGraph.chaFanOut(e);
+        boolean ambiguous = fanOut > 1;
         return Map.of(
             "style", DefaultAttribute.createAttribute("dashed"),
-            "color", DefaultAttribute.createAttribute("gray60"),
-            "tooltip", DefaultAttribute.createAttribute("inferred by class hierarchy analysis")
+            "color", DefaultAttribute.createAttribute(ambiguous ? "#c98a2e" : "gray60"),
+            "tooltip", DefaultAttribute.createAttribute(ambiguous
+                ? "inferred by class hierarchy analysis — one of " + fanOut
+                  + " implementations, so this call may not happen at runtime"
+                : "inferred by class hierarchy analysis — the only implementation")
         );
     }
 

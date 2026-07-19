@@ -38,6 +38,7 @@ class CarveE2ETest {
     private static final String CLASS_HTML = "class-graph.html";
     private static final String PKG_HTML   = "package-graph.html";
     private static final String DOT        = "call-graph.dot";
+    private static final String CSV        = "class-edges.csv";
 
     @Test
     void GIVEN_a_sample_project_WHEN_running_main_THEN_the_default_reports_are_produced(@TempDir Path out)
@@ -48,6 +49,7 @@ class CarveE2ETest {
         assertThat(out.resolve(GEXF)).isNotEmptyFile();
         assertThat(out.resolve(CLASS_HTML)).isNotEmptyFile();
         assertThat(out.resolve(PKG_HTML)).isNotEmptyFile();
+        assertThat(out.resolve(CSV)).isNotEmptyFile();
         assertThat(out.resolve(DOT)).doesNotExist(); // --dot not given
     }
 

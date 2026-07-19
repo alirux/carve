@@ -198,13 +198,15 @@ public class Carve {
         Path pkgHtmlFile = outPath.resolve("package-graph.html");
         Path gexfFile    = outPath.resolve("class-graph.gexf");
         Path jsonFile    = outPath.resolve("analysis.json");
+        Path csvFile     = outPath.resolve("class-edges.csv");
         Path dotFile     = outPath.resolve("call-graph.dot");
 
         String reports = String.join("\n           ",
             htmlFile.toAbsolutePath() + " (open in browser)",
             pkgHtmlFile.toAbsolutePath() + " (open in browser)",
             gexfFile.toAbsolutePath() + " (open in Gephi)",
-            jsonFile.toAbsolutePath().toString())
+            jsonFile.toAbsolutePath().toString(),
+            csvFile.toAbsolutePath() + " (class edges, one row per coupling)")
             + (c.writeDot() ? "\n           " + dotFile.toAbsolutePath() : "");
 
         int appCount = cg.applicationNodes().size();

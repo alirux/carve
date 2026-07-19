@@ -202,4 +202,47 @@ class CallGraphTest {
         assertThat(g.edges()).hasSize(1);
         assertThat(g.getRaw().vertexSet()).hasSize(2);
     }
+
+    @Test
+    void GIVEN_the_same_pair_inferred_through_two_interfaces_WHEN_tagging_THEN_the_worst_fan_out_wins() {
+        // A callee can implement two interfaces, so CHA reaches it twice with
+        // different fan-outs. Keeping the first would make the value depend on the
+        // iteration order of the implementor index, which is a HashMap.
+        var caller = app("a.A#m").build();
+        var callee = app("b.B#m").build();
+        CallGraph g = new CallGraph();
+
+        assertThat(g.addChaEdge(caller, callee, 1)).isTrue();
+        assertThat(g.addChaEdge(caller, callee, 5)).isFalse();
+
+        assertThat(g.chaFanOut(g.getRaw().getEdge(caller, callee))).isEqualTo(5);
+    }
+
+    @Test
+    void GIVEN_the_worst_fan_out_arriving_first_WHEN_tagging_THEN_it_is_not_lowered() {
+        var caller = app("a.A#m").build();
+        var callee = app("b.B#m").build();
+        CallGraph g = new CallGraph();
+
+        g.addChaEdge(caller, callee, 5);
+        g.addChaEdge(caller, callee, 1);
+
+        assertThat(g.chaFanOut(g.getRaw().getEdge(caller, callee))).isEqualTo(5);
+    }
+
+    @Test
+    void GIVEN_an_edge_observed_at_a_call_site_WHEN_cha_rediscovers_it_THEN_it_carries_no_fan_out() {
+        // Direct evidence outranks inference, so the edge stays direct and the
+        // fan-out stays absent rather than describing an inference not relied on.
+        var caller = app("a.A#m").build();
+        var callee = app("b.B#m").build();
+        CallGraph g = new CallGraph();
+
+        g.addEdge(caller, callee);
+        g.addChaEdge(caller, callee, 4);
+
+        var edge = g.getRaw().getEdge(caller, callee);
+        assertThat(g.isChaEdge(edge)).isFalse();
+        assertThat(g.chaFanOut(edge)).isZero();
+    }
 }

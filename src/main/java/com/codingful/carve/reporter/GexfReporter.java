@@ -33,10 +33,16 @@ import java.util.List;
  * cyclic, inRisk, inLockRisk, methods) is also written as a Gephi attribute column,
  * so the user can partition, filter, and re-colour by any of them inside Gephi.
  *
- * <p>Edges carry {@code edgeKind} ({@code direct}/{@code cha}) and {@code chaWeight},
- * so couplings that exist only because of Class Hierarchy Analysis — an
- * over-approximation — can be filtered out before reading the graph as a
- * dependency map.
+ * <p>Edges carry {@code edgeKind} ({@code direct}/{@code cha}), {@code chaWeight}
+ * and {@code implFanOut}, so couplings that exist only because of Class Hierarchy
+ * Analysis can be filtered out before reading the graph as a dependency map.
+ *
+ * <p>{@code implFanOut} is the column to filter on, and it is declared numeric so
+ * Gephi offers a range filter over it: it counts the implementations CHA was
+ * choosing between, so {@code 1} is an interface with a single implementation —
+ * inferred but exact — and only {@code > 1} is the over-approximation. Hiding
+ * every {@code edgeKind=cha} edge also hides the sound ones. See
+ * {@code docs/CHA.md} §6b.
  */
 public class GexfReporter {
 
@@ -64,9 +70,12 @@ public class GexfReporter {
         w.println("    </attributes>");
 
         // Edge columns let the user filter out CHA-inferred couplings in Gephi.
+        // implFanOut is the one to partition on: 1 means CHA resolved the only
+        // implementation, so filtering on edgeKind alone hides sound edges too.
         w.println("    <attributes class=\"edge\">");
         w.println("      <attribute id=\"0\" title=\"edgeKind\" type=\"string\"/>");
         w.println("      <attribute id=\"1\" title=\"chaWeight\" type=\"integer\"/>");
+        w.println("      <attribute id=\"2\" title=\"implFanOut\" type=\"integer\"/>");
         w.println("    </attributes>");
 
         w.println("    <nodes>");
@@ -101,6 +110,7 @@ public class GexfReporter {
             w.println("        <attvalues>");
             w.printf("          <attvalue for=\"0\" value=\"%s\"/>%n", e.kind());
             w.printf("          <attvalue for=\"1\" value=\"%d\"/>%n", e.chaWeight());
+            w.printf("          <attvalue for=\"2\" value=\"%d\"/>%n", e.implFanOut());
             w.println("        </attvalues>");
             w.println("      </edge>");
         }

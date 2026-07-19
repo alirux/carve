@@ -251,4 +251,59 @@ class DotReporterTest {
         // The inner double quotes must be backslash-escaped in the DOT id.
         assertThat(write(new DotReporter(cg), false)).contains("app.A#m(\\\"x\\\")");
     }
+
+    // -----------------------------------------------------------------------
+    // Inferred edges
+    // -----------------------------------------------------------------------
+
+    @Test
+    void GIVEN_a_call_site_in_the_source_WHEN_writing_dot_THEN_the_edge_carries_no_style() {
+        CallGraph cg = new CallGraph();
+        cg.addEdge(method("app", "A", "m").build(), method("app", "B", "m").build());
+
+        assertThat(edgeLine(write(new DotReporter(cg), false), "app.A#m", "app.B#m"))
+            .doesNotContain("dashed")
+            .doesNotContain(ATTR_COLOR + "=");
+    }
+
+    @Test
+    void GIVEN_an_inference_over_one_implementation_WHEN_writing_dot_THEN_the_edge_is_dashed_grey() {
+        // CHA had no choice to make, so the edge is exact: dashed to show it is not
+        // a call site, but not flagged as an over-approximation.
+        CallGraph cg = new CallGraph();
+        cg.addChaEdge(method("app", "A", "m").build(), method("app", "OnlyImpl", "m").build(), 1);
+
+        String line = edgeLine(write(new DotReporter(cg), false), "app.A#m", "app.OnlyImpl#m");
+        assertThat(line).contains(attr("style", "dashed"))
+                        .contains(attr(ATTR_COLOR, "gray60"))
+                        .contains("the only implementation");
+    }
+
+    @Test
+    void GIVEN_an_inference_over_several_implementations_WHEN_writing_dot_THEN_the_edge_is_amber() {
+        CallGraph cg = new CallGraph();
+        cg.addChaEdge(method("app", "A", "m").build(), method("app", "FirstImpl", "m").build(), 4);
+
+        String line = edgeLine(write(new DotReporter(cg), false), "app.A#m", "app.FirstImpl#m");
+        assertThat(line).contains(attr("style", "dashed"))
+                        .contains(attr(ATTR_COLOR, "#c98a2e"))
+                        .contains("one of 4 implementations");
+    }
+
+    @Test
+    void GIVEN_an_ambiguous_inference_on_a_risk_path_WHEN_writing_dot_THEN_red_still_wins() {
+        // A risk path is the more urgent signal, and the risk analysis deliberately
+        // follows inferred edges, so the amber must not mask it.
+        MethodNode a = method("app", "A", "m").build();
+        MethodNode b = method("app", "B", "m").build();
+        CallGraph cg = new CallGraph();
+        cg.addChaEdge(a, b, 5);
+        var risk = new TransactionRisk(a, b, Set.of(ExternalCallType.HTTP), List.of(a, b));
+
+        String dot = writeWithRisks(new DotReporter(cg), List.of(risk));
+
+        assertThat(edgeLine(dot, "app.A#m", "app.B#m"))
+            .contains(attr(ATTR_COLOR, "red"))
+            .doesNotContain("#c98a2e");
+    }
 }

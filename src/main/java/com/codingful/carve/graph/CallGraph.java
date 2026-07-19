@@ -25,6 +25,7 @@ import org.jgrapht.graph.DefaultDirectedGraph;
 import org.jgrapht.graph.DefaultEdge;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -63,6 +64,19 @@ public class CallGraph {
      * <p>{@link DefaultEdge} has identity semantics, so a plain set is enough.
      */
     private final Set<DefaultEdge> chaEdges = new HashSet<>();
+
+    /**
+     * For each inferred edge, how many implementations of the interface CHA had to
+     * choose between when it created that edge.
+     *
+     * <p>A fan-out of 1 means the interface had a single implementation in the
+     * analysed source: CHA did not guess, it resolved the only candidate, and the
+     * edge is as trustworthy as a direct one. Higher values are the genuine
+     * over-approximation — one of the {@code n} edges is real and the rest are not.
+     * Recording the number turns "this edge may be wrong" into "this edge is one of
+     * n candidates", which is what a consumer needs to decide whether to check it.
+     */
+    private final Map<DefaultEdge, Integer> chaFanOut = new HashMap<>();
 
     /** Count of parsed types carrying a Lombok annotation (see {@link #lombokDetected}). */
     private int lombokAnnotatedTypes;
@@ -105,16 +119,41 @@ public class CallGraph {
      * makes directly stays {@code direct} even when CHA rediscovers it, since the
      * direct evidence is the stronger claim.
      *
+     * <p>The same caller/callee pair can however be reached by CHA more than once,
+     * through two different interfaces that the callee implements. The fan-outs then
+     * differ, and keeping whichever arrived first would make the recorded value
+     * depend on the iteration order of the implementor index — a {@code HashMap},
+     * so not a stable order. The fan-outs are merged by {@code max} instead: the
+     * value is order-independent, and it reports the worst ambiguity the edge rests
+     * on, which is the same rule the class-level collapse applies.
+     *
+     * @param implFanOut how many implementations of the interface CHA was choosing
+     *                   between; 1 means the interface had exactly one, so the edge
+     *                   is resolved rather than guessed
      * @return true when a new edge was created and tagged as CHA-derived
      */
-    public boolean addChaEdge(MethodNode caller, MethodNode callee) {
+    public boolean addChaEdge(MethodNode caller, MethodNode callee, int implFanOut) {
         if (caller.equals(callee)) return false;
         graph.addVertex(caller);
         graph.addVertex(callee);
         DefaultEdge edge = graph.addEdge(caller, callee);
-        if (edge == null) return false;              // already present as a direct edge
+        if (edge == null) {
+            // Already present. Only deepen the ambiguity of an edge CHA itself made;
+            // one observed at a call site keeps no fan-out at all.
+            DefaultEdge existing = graph.getEdge(caller, callee);
+            if (chaEdges.contains(existing)) {
+                chaFanOut.merge(existing, implFanOut, Integer::max);
+            }
+            return false;
+        }
         chaEdges.add(edge);
+        chaFanOut.put(edge, implFanOut);
         return true;
+    }
+
+    /** Convenience for the single-implementation case: an exactly resolved inferred edge. */
+    public boolean addChaEdge(MethodNode caller, MethodNode callee) {
+        return addChaEdge(caller, callee, 1);
     }
 
     // -----------------------------------------------------------------------
@@ -132,6 +171,12 @@ public class CallGraph {
      * observed at a call site. See {@link #addChaEdge}.
      */
     public boolean isChaEdge(DefaultEdge edge) { return chaEdges.contains(edge); }
+
+    /**
+     * How many implementations CHA was choosing between when it inferred this edge,
+     * or {@code 0} for an edge observed at a call site. See {@link #chaFanOut}.
+     */
+    public int chaFanOut(DefaultEdge edge) { return chaFanOut.getOrDefault(edge, 0); }
 
     /** Number of edges that exist only because of Class Hierarchy Analysis. */
     public int chaEdgeCount() { return chaEdges.size(); }

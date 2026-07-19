@@ -20,6 +20,7 @@ package com.codingful.carve;
 import com.codingful.carve.analyzer.CouplingAnalyzer;
 import com.codingful.carve.graph.CallGraph;
 import com.codingful.carve.reporter.ClassGraphModel;
+import com.codingful.carve.reporter.CsvReporter;
 import com.codingful.carve.reporter.DotReporter;
 import com.codingful.carve.reporter.GexfReporter;
 import com.codingful.carve.reporter.HtmlReporter;
@@ -59,6 +60,7 @@ final class ReportWriter {
         Path jsonFile    = outPath.resolve("analysis.json");
         Path dotFile     = outPath.resolve("call-graph.dot");
         Path gexfFile    = outPath.resolve("class-graph.gexf");
+        Path csvFile     = outPath.resolve("class-edges.csv");
         Path htmlFile    = outPath.resolve("class-graph.html");
         Path pkgHtmlFile = outPath.resolve("package-graph.html");
 
@@ -108,6 +110,17 @@ final class ReportWriter {
                 }
                 log.info("GEXF written: {} ({} classes, {} edges)  [{}]",
                     gexfFile, classModel.nodes().size(), classModel.edges().size(), elapsed(t));
+            }), exec));
+
+            // The class graph in a form that stays small and greppable: the GEXF
+            // carries the same edges in far more XML, and analysis.json carries none.
+            reportTasks.add(CompletableFuture.runAsync(ioTask(() -> {
+                long t = System.nanoTime();
+                try (var w = Files.newBufferedWriter(csvFile)) {
+                    new CsvReporter().write(w, classModel);
+                }
+                log.info("CSV written: {} ({} edges)  [{}]",
+                    csvFile, classModel.edges().size(), elapsed(t));
             }), exec));
 
             reportTasks.add(CompletableFuture.runAsync(ioTask(() -> {

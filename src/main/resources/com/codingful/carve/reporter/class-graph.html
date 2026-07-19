@@ -90,7 +90,32 @@
     <label><input type="checkbox" id="onlyRisk"> Only risk classes</label>
     <label><input type="checkbox" id="onlyLockRisk"> Only lock risk classes</label>
     <label><input type="checkbox" id="hlRisk" checked> Highlight risks (red)</label>
-    <label><input type="checkbox" id="hideCha"> Hide inferred (CHA) edges</label>
+    <div style="margin:3px 0">
+      <label for="chaFilter" style="display:inline">Inferred edges</label>
+      <select id="chaFilter">
+        <option value="all" selected>show all</option>
+        <option value="ambiguous">hide ambiguous only</option>
+        <option value="inferred">hide all inferred</option>
+      </select>
+      <details class="help"><summary title="What do these three settings do?">?</summary><div class="help-body">
+        &quot;Inferred&quot; and &quot;doubtful&quot; are different questions, so there are
+        three views. An inference that had only one implementation to pick is sound;
+        see the <b>Edges</b> legend below for the colours.<br><br>
+        &bull; <b>show all</b> — every edge in the graph.<br>
+        &bull; <b>hide ambiguous only</b> — drops just the amber ones. This is the
+        dependency view: what is left is every edge backed by a call site
+        or by an inference that had no alternative. Use it when comparing against
+        <code>pom.xml</code> / <code>build.gradle</code>.<br>
+        &bull; <b>hide all inferred</b> — drops everything CHA contributed, sound
+        inferences included. Use it to see what a plain call-site scan would have
+        found, or how much of the graph rests on CHA at all.<br><br>
+        The last two are <b>not</b> nested: an edge with at least one
+        real call site survives <i>hide all inferred</i> even when other calls behind
+        it were inferred, so a few amber edges can remain. That is deliberate —
+        they do have direct evidence.<br><br>
+        The header counts both figures separately, so the split is visible without
+        touching this filter.</div></details>
+    </div>
   </div>
   <div class="sec">
     <label><input type="checkbox" id="groupPkg"> Group by package</label>
@@ -170,8 +195,15 @@ function flyTo(node) {
 }
 
 // True when every underlying call behind this link was inferred by class
-// hierarchy analysis, so the coupling may not exist at runtime.
+// hierarchy analysis rather than read off a call site.
 function chaOnly(l) { return l.weight > 0 && l.chaWeight === l.weight; }
+
+// True when at least one of those inferences was a guess: CHA had several
+// implementations to choose between, so this coupling may not exist at runtime.
+// An inferred edge with implFanOut === 1 resolved the only implementation in the
+// source and is as sound as a direct one — which is why "inferred" alone is not
+// what gets highlighted. See docs/CHA.md §6b.
+function ambiguous(l) { return l.implFanOut > 1; }
 
 const elGraph = document.getElementById('graph');
 const Graph = ForceGraph3D()(elGraph)
@@ -183,10 +215,17 @@ const Graph = ForceGraph3D()(elGraph)
   .nodeRelSize(3)
   .nodeVal(nodeVal)
   .nodeOpacity(0.85)
-  // Couplings resting entirely on class hierarchy analysis get their own hue:
-  // they are inferred over-approximations, not call sites in the source. Colour
-  // rather than opacity, because .linkOpacity() below flattens any alpha here.
-  .linkColor(l => chaOnly(l) ? '#c98a2e' : 'rgba(188,198,212,0.40)')
+  // Amber marks the couplings CHA guessed at, not merely the ones it inferred:
+  // highlighting every inferred edge would flag ~90% sound ones and drown the
+  // few that need checking. Exactly-resolved inferences get a dimmer blue-grey —
+  // still distinguishable from a call site, but not raised as a warning.
+  // Colour rather than opacity, because .linkOpacity() below flattens any alpha.
+  // Plain hex, not rgba: .linkOpacity() below overrides any alpha set here, so an
+  // alpha difference between these three would be silently discarded — the hues
+  // themselves have to carry the distinction once composited at 0.4 over #0d1117.
+  .linkColor(l => ambiguous(l) ? '#c98a2e'
+                : chaOnly(l)   ? '#5f7fd0'
+                               : 'rgba(188,198,212,0.40)')
   .linkOpacity(0.4)
   .linkWidth(l => Math.min(0.6 + l.weight * 0.2, 4))
   .linkDirectionalArrowLength(3)
@@ -194,7 +233,7 @@ const Graph = ForceGraph3D()(elGraph)
   .linkDirectionalArrowColor(() => 'rgba(210,218,228,0.6)')
   .linkDirectionalParticles(l => Math.min(l.weight, 4))
   .linkDirectionalParticleWidth(1.5)
-  .linkDirectionalParticleColor(l => chaOnly(l) ? '#c98a2e' : '#d7dee8')
+  .linkDirectionalParticleColor(l => ambiguous(l) ? '#c98a2e' : '#d7dee8')
   .linkDirectionalParticleSpeed(0.006)
   .warmupTicks(150)
   .cooldownTicks(200)
@@ -377,7 +416,7 @@ if (DATA.multiProject) {
 function apply() {
   const onlyRisk     = document.getElementById('onlyRisk').checked;
   const onlyLockRisk = document.getElementById('onlyLockRisk').checked;
-  const hideCha      = document.getElementById('hideCha').checked;
+  const chaFilter    = document.getElementById('chaFilter').value;
   const nodes = DATA.nodes.filter(n =>
     active.has(n.project) &&
     (!onlyRisk     || n.inRisk || n.external) &&
@@ -386,16 +425,25 @@ function apply() {
   const links = DATA.links.filter(l =>
     ids.has(typeof l.source==='object'?l.source.id:l.source) &&
     ids.has(typeof l.target==='object'?l.target.id:l.target) &&
-    (!hideCha || !chaOnly(l)));
+    // "hide all inferred" drops only edges resting entirely on inference: an edge
+    // with at least one real call site keeps it even if other calls behind it were
+    // inferred, so the two options are not nested — they answer different questions.
+    (chaFilter === 'all'
+      || (chaFilter === 'ambiguous' && !ambiguous(l))
+      || (chaFilter === 'inferred'  && !chaOnly(l))));
   Graph.graphData({ nodes, links });
+  // Report the two counts separately: conflating them is what made the previous
+  // header read as if every inferred edge were doubtful.
   const chaCount = links.filter(chaOnly).length;
+  const ambCount = links.filter(ambiguous).length;
   document.getElementById('stats').textContent =
     `${nodes.length} classes · ${links.length} edges`
-    + (chaCount ? ` · ${chaCount} inferred` : '');
+    + (chaCount ? ` · ${chaCount} inferred` : '')
+    + (ambCount ? ` · ${ambCount} ambiguous` : '');
 }
 document.getElementById('onlyRisk').addEventListener('change', apply);
 document.getElementById('onlyLockRisk').addEventListener('change', apply);
-document.getElementById('hideCha').addEventListener('change', apply);
+document.getElementById('chaFilter').addEventListener('change', apply);
 document.getElementById('hlRisk').addEventListener('change', () => Graph.nodeColor(nodeColor));
 document.getElementById('groupPkg').addEventListener('change', e => {
   groupByPkg = e.target.checked;
@@ -516,13 +564,19 @@ function linkLegend() {
        implementation found, even ones it can never reach at runtime — and with
        several <code>--source</code> roots, even implementations in projects that
        share no build dependency.<br><br>
-       An edge is amber only when <b>every</b> underlying call was inferred this
-       way; one real call site keeps it grey. Reading the graph as a dependency
-       map (against <code>pom.xml</code> / <code>build.gradle</code>), leave the
-       amber ones out — or hide them with the filter above.</div></details>
+       But it only over-approximates when it has a <b>choice</b>. If the interface
+       has a single implementation in the source, CHA resolved it rather than
+       guessed, and the edge is as sound as a direct one. Those are drawn blue.<br><br>
+       Amber marks the edges where CHA was choosing between several
+       implementations, so at most one of them is real. These are the ones to
+       check against the source, and the ones to leave out when reading the graph
+       as a dependency map (against <code>pom.xml</code> /
+       <code>build.gradle</code>).<br><br>
+       The <b>Inferred edges</b> control above decides which of these are
+       drawn; its own <span style="white-space:nowrap">&quot;?&quot;</span> explains the three settings.</div></details>
      <label><span class="dot" style="background:rgba(188,198,212,0.7)"></span>direct call site</label>
-     <label><span class="dot" style="background:#c98a2e"></span>inferred by class hierarchy analysis</label>
-     <div class="muted">inferred edges may not exist at runtime</div></div>`;
+     <label><span class="dot" style="background:#5f7fd0"></span>inferred, single implementation — sound</label>
+     <label><span class="dot" style="background:#c98a2e"></span>inferred, several implementations — may not exist</label></div>`;
 }
 
 function updateLegend() {

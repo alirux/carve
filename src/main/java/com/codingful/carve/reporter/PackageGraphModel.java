@@ -53,8 +53,19 @@ public final class PackageGraphModel {
      *
      * @param chaWeight how many of those calls exist only because of Class
      *                  Hierarchy Analysis (see {@link #kind()})
+     * @param implFanOut the worst ambiguity behind this coupling: the largest
+     *                   number of implementations CHA was choosing between across
+     *                   the class edges it aggregates, or {@code 0} when none were
+     *                   inferred. {@code 1} means every inference resolved the only
+     *                   implementation, so the coupling is sound; {@code > 1} means
+     *                   at least one class edge underneath it was a guess.
+     *
+     *                   <p>Summing would be meaningless here (fan-outs are not
+     *                   additive) and averaging would let one exactly-resolved edge
+     *                   dilute a genuinely ambiguous one, so the maximum is taken —
+     *                   the same rule the class-level collapse applies.
      */
-    public record Edge(String source, String target, int weight, int chaWeight) {
+    public record Edge(String source, String target, int weight, int chaWeight, int implFanOut) {
 
         /**
          * {@code "cha"} when this coupling rests entirely on Class Hierarchy
@@ -118,6 +129,7 @@ public final class PackageGraphModel {
         // Aggregate class-level edges to package-level
         Map<String, Integer> edgeWeights = new LinkedHashMap<>();
         Map<String, Integer> chaWeights  = new HashMap<>();
+        Map<String, Integer> chaFanOuts  = new HashMap<>();
         for (ClassGraphModel.Edge ce : classModel.edges()) {
             String sp = pkgKey(ce.source());
             String tp = pkgKey(ce.target());
@@ -125,6 +137,7 @@ public final class PackageGraphModel {
             String key = sp + " " + tp;
             edgeWeights.merge(key, ce.weight(), Integer::sum);
             chaWeights.merge(key, ce.chaWeight(), Integer::sum);
+            chaFanOuts.merge(key, ce.implFanOut(), Integer::max);
         }
 
         List<Node> nodes = new ArrayList<>(byPkg.size());
@@ -144,7 +157,7 @@ public final class PackageGraphModel {
         edgeWeights.forEach((key, w) -> {
             int sep = key.indexOf(' ');
             edges.add(new Edge(key.substring(0, sep), key.substring(sep + 1),
-                w, chaWeights.getOrDefault(key, 0)));
+                w, chaWeights.getOrDefault(key, 0), chaFanOuts.getOrDefault(key, 0)));
         });
 
         return new PackageGraphModel(nodes, edges,

@@ -60,8 +60,9 @@ class GexfReporterTest {
     private static final String COL_METHODS        = "methods";
 
     // Edge attribute-column titles.
-    private static final String COL_EDGE_KIND  = "edgeKind";
-    private static final String COL_CHA_WEIGHT = "chaWeight";
+    private static final String COL_EDGE_KIND    = "edgeKind";
+    private static final String COL_CHA_WEIGHT   = "chaWeight";
+    private static final String COL_IMPL_FAN_OUT = "implFanOut";
 
     // -----------------------------------------------------------------------
     // Helpers
@@ -103,6 +104,16 @@ class GexfReporterTest {
         for (int i = 0; i < attrs.getLength(); i++) {
             Element a = (Element) attrs.item(i);
             if (a.getAttribute("title").equals(title)) return a.getAttribute("id");
+        }
+        throw new AssertionError("no attribute column: " + title);
+    }
+
+    /** The declared type of an attribute column, looked up by its title. */
+    private static String attributeType(Document doc, String title) {
+        NodeList attrs = doc.getElementsByTagName(EL_ATTRIBUTE);
+        for (int i = 0; i < attrs.getLength(); i++) {
+            Element a = (Element) attrs.item(i);
+            if (a.getAttribute("title").equals(title)) return a.getAttribute("type");
         }
         throw new AssertionError("no attribute column: " + title);
     }
@@ -151,7 +162,8 @@ class GexfReporterTest {
         assertThat(columnsOf(doc, "node")).containsExactly(COL_PROJECT, COL_TRANSACTIONAL,
             COL_EXTERNAL, COL_EXTERNAL_CALLS, COL_CYCLIC, COL_IN_RISK, COL_IN_LOCK_RISK,
             COL_METHODS);
-        assertThat(columnsOf(doc, "edge")).containsExactly(COL_EDGE_KIND, COL_CHA_WEIGHT);
+        assertThat(columnsOf(doc, "edge")).containsExactly(
+            COL_EDGE_KIND, COL_CHA_WEIGHT, COL_IMPL_FAN_OUT);
     }
 
     /** Titles of the attribute columns declared for {@code node} or {@code edge}. */
@@ -317,6 +329,46 @@ class GexfReporterTest {
         Element e = (Element) doc.getElementsByTagName(EL_EDGE).item(0);
         assertThat(attvalue(doc, e, COL_EDGE_KIND)).isEqualTo("direct");
         assertThat(attvalue(doc, e, COL_CHA_WEIGHT)).isEqualTo("0");
+        assertThat(attvalue(doc, e, COL_IMPL_FAN_OUT)).isEqualTo("0");
+    }
+
+    @Test
+    void GIVEN_an_interface_with_one_implementation_WHEN_writing_gexf_THEN_the_fan_out_is_one()
+            throws Exception {
+        // Inferred, but CHA had no choice to make — the edge is exact.
+        CallGraph cg = new CallGraph();
+        cg.addChaEdge(method("app", "A", "1").build(), method("app", "OnlyImpl", "1").build(), 1);
+
+        Document doc = writeAndParse(cg);
+
+        Element e = (Element) doc.getElementsByTagName(EL_EDGE).item(0);
+        assertThat(attvalue(doc, e, COL_EDGE_KIND)).isEqualTo("cha");
+        assertThat(attvalue(doc, e, COL_IMPL_FAN_OUT)).isEqualTo("1");
+    }
+
+    @Test
+    void GIVEN_an_interface_with_several_implementations_WHEN_writing_gexf_THEN_the_fan_out_is_reported()
+            throws Exception {
+        CallGraph cg = new CallGraph();
+        cg.addChaEdge(method("app", "A", "1").build(), method("app", "FirstImpl", "1").build(), 4);
+
+        Document doc = writeAndParse(cg);
+
+        Element e = (Element) doc.getElementsByTagName(EL_EDGE).item(0);
+        assertThat(attvalue(doc, e, COL_IMPL_FAN_OUT)).isEqualTo("4");
+    }
+
+    @Test
+    void GIVEN_the_edge_columns_WHEN_writing_gexf_THEN_fan_out_is_declared_as_an_integer()
+            throws Exception {
+        // Gephi only offers range filtering on a column declared numeric, which is
+        // the whole point of exporting the fan-out rather than a boolean.
+        CallGraph cg = new CallGraph();
+        cg.addChaEdge(method("app", "A", "1").build(), method("app", "B", "1").build(), 2);
+
+        Document doc = writeAndParse(cg);
+
+        assertThat(attributeType(doc, COL_IMPL_FAN_OUT)).isEqualTo("integer");
     }
 
     @Test

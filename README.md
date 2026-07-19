@@ -232,8 +232,9 @@ java -jar carve.jar src/main/java --markers markers/my-project.properties
 |---|---|
 | `class-graph.html` | **Interactive 3D class viewer** — open in a browser. One node per class; rotate/zoom/pan, per-project filtering, risk highlighting, and search. |
 | `package-graph.html` | **Interactive 3D package viewer** — open in a browser. One node per package, sized by class count; optional "Group by project" clustering; **modernisation hotspots** (unstable hubs / extraction candidates / stable cores) colour-coded with highlight toggle and "only hotspots" filter. |
-| `class-graph.gexf` | Class-level graph for [Gephi](https://gephi.org/) — colour/size pre-set, every attribute (project, transactional, external, cyclic, inRisk, methods) available for partitioning and filtering. |
+| `class-graph.gexf` | Class-level graph for [Gephi](https://gephi.org/) — colour/size pre-set, every attribute (project, transactional, external, cyclic, inRisk, methods) available for partitioning and filtering. Edges carry `edgeKind`, `chaWeight` and `implFanOut`, the last as a numeric column so a Gephi range filter isolates the inferred couplings that are genuinely ambiguous. |
 | `call-graph.dot` | Graphviz DOT (method-level), **opt-in via `--dot`** — colour-coded by role (yellow = `@Transactional`, red = external call, orange = both). On large codebases the rendered SVG is an unreadable hairball; use the interactive exports instead. |
+| `class-edges.csv` | **Class-level edges, one row per coupling** — `source,sourceProject,target,targetProject,weight,chaWeight,implFanOut,edgeKind`. The compact, greppable form of the class graph: `edgeKind=cha` marks an inferred edge, and `implFanOut` says how many implementations that inference was choosing between — `1` is exact, `>1` is a guess worth checking ([details](docs/CHA.md#6b-how-much-an-inferred-edge-is-worth-implfanout)). |
 | `analysis.json` | JSON report: graph summary, transaction risks, longest paths, cyclic clusters, package coupling (flat profile + modernisation `hotspots`), lock risks. |
 
 **Interactive exploration (recommended).** A method-level graph of a large monolith (10k+ nodes) is an unreadable hairball as a static SVG. The tool therefore collapses to **class level** and **package level**, each emitted as a self-contained 3D viewer:
@@ -267,10 +268,11 @@ The value is that the numbers are **deterministic and reproducible**: the same s
 | Question | Attach |
 |---|---|
 | Which packages are unstable hubs? Which `@Transactional` paths reach an external call? Which clusters are cyclic? Which packages depend on which? | `analysis.json` — findings, plus per-package afferent/efferent dependency lists |
-| Which **classes** couple these two modules? Is this edge a real call or an inferred one? | `class-graph.gexf` — the class-level topology, the only report carrying `edgeKind`/`chaWeight` per edge |
+| Which **classes** couple these two modules? Is this edge a real call, an exactly-resolved one, or a guess? | `class-edges.csv` — one row per class-to-class edge, with `edgeKind`/`chaWeight`/`implFanOut`; small enough to attach whole |
+| The same topology with every node attribute, for a graph tool | `class-graph.gexf` |
 | Anything at method granularity | `call-graph.dot` (opt-in via `--dot`) |
 
-`analysis.json` deliberately carries **no edge list**: it reports findings and package-level coupling rather than the graph itself, which keeps it compact even on a large multi-module workspace. The class graph lives in the GEXF instead — verbose XML that grows with the graph, so on anything sizeable prefer extracting the edges you need over pasting it whole. The two HTML viewers embed the same data but are built for humans; there is no reason to feed them to a model.
+`analysis.json` deliberately carries **no edge list**: it reports findings and package-level coupling rather than the graph itself, which keeps it compact even on a large multi-module workspace. The class graph is exported separately — as `class-edges.csv` for reading and filtering, and as `class-graph.gexf` for graph tools. The CSV is the one to hand to a model: same edges, a fraction of the bytes, and one row per coupling. The two HTML viewers embed the same data but are built for humans; there is no reason to feed them to a model.
 
 Useful ways to combine them:
 
@@ -278,7 +280,7 @@ Useful ways to combine them:
 - **Ask for the *why*, not the *what*.** The tool says a package has high efferent coupling; an assistant reading the source behind it can explain which dependencies are accidental and which are essential.
 - **Triage the risk list.** Transaction and lock risks come with full call paths. An assistant can classify them — a genuine remote call inside a transaction versus a false positive from a self-invocation the analyser cannot see.
 
-Two caveats worth passing along with the data. Some edges are **inferred** rather than observed (see [CHA.md](docs/CHA.md)) — an assistant reading the graph as a build-dependency map will otherwise report couplings that do not exist, and only the GEXF says which edges those are. And the coupling metrics in `analysis.json` are computed over the inferred edges too, so treat the ranking as a strong hint, not as a source of truth to act on unchecked.
+Two caveats worth passing along with the data. Some edges are **inferred** rather than observed (see [CHA.md](docs/CHA.md)) — an assistant reading the graph as a build-dependency map will otherwise report couplings that do not exist. `edgeKind` tells inferred from observed, but the column to act on is `implFanOut`: an inferred edge to the only implementation of an interface is exact, and telling an assistant to discard every `cha` row throws away most of a sound graph. Point it at `edgeKind=cha && implFanOut>1` instead — typically a few dozen rows, and they cluster where the codebase has real runtime variation points. And the coupling metrics in `analysis.json` are computed over the inferred edges too, so treat the ranking as a strong hint, not as a source of truth to act on unchecked.
 
 ## Known limitations
 
