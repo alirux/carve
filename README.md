@@ -11,7 +11,7 @@ Static analysis tool for Java/Spring codebases, built on top of [Spoon](https://
 
 Primary use case: supporting **modernisation of legacy Spring applications** by mapping dependencies and detecting patterns that make splitting into independent services difficult.
 
-Every report is deterministic — the same source tree always yields the same graph, the same risk paths, the same metrics — and `analysis.json` is structured for machine consumption, so the output doubles as grounding data for an AI assistant planning the modernisation work ([details](#feeding-the-output-to-an-ai-assistant)).
+Every report is deterministic — the same source tree always yields the same graph, the same risk paths, the same metrics — and the JSON and GEXF outputs are structured for machine consumption, so they double as grounding data for an AI assistant planning the modernisation work ([details](#feeding-the-output-to-an-ai-assistant)).
 
 ## Analysis
 
@@ -260,9 +260,17 @@ dot -Tsvg reports/call-graph.dot -o reports/call-graph.svg
 
 ### Feeding the output to an AI assistant
 
-`analysis.json` is designed to be read by a machine as much as by a person, which makes it a good grounding input for an LLM working on a modernisation plan.
+The machine-readable reports make good grounding input for an LLM working on a modernisation plan — but they carry different things, and which one to attach depends on the question.
 
-The value is that the numbers are **deterministic and reproducible**: the same source tree yields the same call graph, the same risk paths, the same coupling metrics. An assistant asked to plan a service extraction from source alone has to guess at the call structure, and guesses drift between runs. Given the JSON, it reasons over a graph that was actually computed — which packages are unstable hubs, which `@Transactional` paths reach an external call, which clusters are cyclic.
+The value is that the numbers are **deterministic and reproducible**: the same source tree yields the same call graph, the same risk paths, the same coupling metrics. An assistant asked to plan a service extraction from source alone has to guess at the call structure, and guesses drift between runs. Given a report, it reasons over a graph that was actually computed.
+
+| Question | Attach |
+|---|---|
+| Which packages are unstable hubs? Which `@Transactional` paths reach an external call? Which clusters are cyclic? Which packages depend on which? | `analysis.json` — findings, plus per-package afferent/efferent dependency lists |
+| Which **classes** couple these two modules? Is this edge a real call or an inferred one? | `class-graph.gexf` — the class-level topology, the only report carrying `edgeKind`/`chaWeight` per edge |
+| Anything at method granularity | `call-graph.dot` (opt-in via `--dot`) |
+
+`analysis.json` deliberately carries **no edge list**: it reports findings and package-level coupling rather than the graph itself, which keeps it compact even on a large multi-module workspace. The class graph lives in the GEXF instead — verbose XML that grows with the graph, so on anything sizeable prefer extracting the edges you need over pasting it whole. The two HTML viewers embed the same data but are built for humans; there is no reason to feed them to a model.
 
 Useful ways to combine them:
 
@@ -270,7 +278,7 @@ Useful ways to combine them:
 - **Ask for the *why*, not the *what*.** The tool says a package has high efferent coupling; an assistant reading the source behind it can explain which dependencies are accidental and which are essential.
 - **Triage the risk list.** Transaction and lock risks come with full call paths. An assistant can classify them — a genuine remote call inside a transaction versus a false positive from a self-invocation the analyser cannot see.
 
-Two caveats worth passing along with the data. Some edges are **inferred** rather than observed (see [CHA.md](docs/CHA.md)) — an assistant reading the graph as a build-dependency map will otherwise report couplings that do not exist. And the coupling metrics are computed over those inferred edges too, so treat the ranking as a strong hint, not as a source of truth to act on unchecked.
+Two caveats worth passing along with the data. Some edges are **inferred** rather than observed (see [CHA.md](docs/CHA.md)) — an assistant reading the graph as a build-dependency map will otherwise report couplings that do not exist, and only the GEXF says which edges those are. And the coupling metrics in `analysis.json` are computed over the inferred edges too, so treat the ranking as a strong hint, not as a source of truth to act on unchecked.
 
 ## Known limitations
 
