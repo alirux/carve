@@ -79,6 +79,17 @@ build fine, so no workaround is needed.
   In particular, update `THIRD-PARTY-NOTICES.md` whenever the commit changes a
   bundled runtime dependency (an `implementation`/`runtimeOnly` entry in
   `build.gradle.kts`).
+- **When a commit touches the HTML report templates
+  (`src/main/resources/com/codingful/carve/reporter/*.html`), check the README
+  screenshots** — `docs/Class Graph grouped by package.jpg` and
+  `docs/Package Graph grouped by project.jpg`. They show the viewer's control
+  panel and legend, so a new filter, a renamed control, a changed edge colour or
+  an extra figure in the header caption makes them wrong, and a screenshot that
+  contradicts the surrounding text is worse than no screenshot.
+  Text-only edits inside the page do not need a retake; anything visible in the
+  panel, the legend or the header does. Retaking them is a manual step (open the
+  report in a browser, same framing, same grouping toggle) — if it cannot be done
+  in the same commit, say so explicitly rather than letting it pass silently.
 
 ## Releases
 
