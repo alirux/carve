@@ -93,16 +93,17 @@ The analyser identifies two structural patterns that create conditions for datab
 
 ```bash
 # Single project
-java -jar build/libs/carve-1.0.0-SNAPSHOT.jar <source-root> [options]
+java -jar build/libs/carve-dev-SNAPSHOT.jar <source-root> [options]
 
 # Multi-project (analyse two or more source trees together)
-java -jar build/libs/carve-1.0.0-SNAPSHOT.jar \
+java -jar build/libs/carve-dev-SNAPSHOT.jar \
      --source <name>:<path> --source <name>:<path> ... [options]
 
 Options:
   --source <name>:<path>   Named source root (repeatable, for multi-project analysis)
   --classpath <path>       Colon-separated JARs for type resolution
-  --java <version>         Java compliance level for source parsing (default: 21, range: 11–23)
+  --java <version>         Java compliance level for source parsing (default: 21; the
+                           ceiling is whatever the bundled Spoon/ECJ supports)
   --encoding <name>        Source file encoding (default: UTF-8; use ISO-8859-1 for legacy codebases)
   --markers <file>         Properties file with custom external-call markers (see below)
   --print-risks            Print transaction risk call stacks to console

@@ -15,7 +15,7 @@ The overarching goal is the same throughout: a monolith is easiest to break apar
 5. [Coupling analysis: SCC & package instability](#5-coupling-analysis-scc--package-instability)
 6. [DB lock & deadlock risk patterns](#6-db-lock--deadlock-risk-patterns)
 7. [Multi-project analysis](#7-multi-project-analysis)
-8. [Reporting: DOT, JSON, console](#8-reporting-dot-json-console)
+8. [Reporting: interactive viewers, DOT, CSV, JSON, console](#8-reporting-interactive-viewers-dot-csv-json-console)
 9. [Known limitations](#9-known-limitations)
 
 ---
@@ -48,7 +48,7 @@ The call graph is the map of the territory. "Which code reaches which code" is t
 
 ### How to use it
 
-You normally don't interact with it directly — it's the substrate for the analyses below. It is emitted as `call-graph.dot` for visual inspection (see [§8](#8-reporting-dot-json-console)).
+You normally don't interact with it directly — it's the substrate for the analyses below. It is emitted as `call-graph.dot` for visual inspection (see [§8](#8-reporting-interactive-viewers-dot-csv-json-console)).
 
 ---
 
@@ -425,7 +425,7 @@ Multi-project analysis gives you the full picture that single-module analysis ca
 
 ---
 
-## 8. Reporting: interactive viewers, DOT, JSON, console
+## 8. Reporting: interactive viewers, DOT, CSV, JSON, console
 
 The tool always writes four files (`class-graph.html`, `package-graph.html`, `class-graph.gexf`, `analysis.json`), optionally writes a fifth (`call-graph.dot`, via `--dot`), and can additionally print to the console.
 
@@ -454,6 +454,41 @@ One node per Java package, sized proportionally to the number of classes it cont
 It also surfaces the **modernisation hotspots** (see [§5b](#5b-package-instability)): each package classified as an `unstableHub`, `extractionCandidate` or `stableCore` is drawn in a dedicated colour, with a **"Highlight hotspots"** toggle (on by default, works in both role- and project-colour modes) and an **"Only modernisation hotspots"** filter. Hovering or selecting a package shows its archetype and `score`. The controls and legend appear only when the graph actually contains hotspots.
 
 Why these two levels: for an architectural conversation — "which modules depend on which, where are the cycles" — the package is the right starting unit, and the class level shows the next layer of detail. Method-level specifics live in the console reports and `analysis.json`.
+
+### `class-edges.csv` (class-level edges, one row per coupling)
+
+The same class graph as the GEXF, in the form that is easiest to read, filter and
+hand to a model. One row per class-to-class edge:
+
+```
+source,sourceProject,target,targetProject,weight,chaWeight,implFanOut,edgeKind
+com.demo.orders.OrderService,orders,com.demo.notify.NotificationGateway,notify,1,0,0,direct
+com.demo.orders.LabelRenderer,orders,com.demo.billing.InvoiceFormatter,billing,1,1,1,cha
+```
+
+| Column | Meaning |
+|---|---|
+| `weight` | number of underlying method calls behind this class-to-class edge |
+| `chaWeight` | how many of those calls exist only because of class hierarchy analysis |
+| `implFanOut` | how many implementations CHA was choosing between: `0` when nothing was inferred, `1` when it resolved the only one (sound), `> 1` a genuine guess |
+| `edgeKind` | `cha` when *every* underlying call was inferred, `direct` when at least one call site in the source produced the edge |
+
+Self-edges and calls into library stubs are dropped — the external-call information
+they carry is already recorded as an attribute on the calling class.
+
+Two filters cover most uses:
+
+```bash
+# the couplings worth verifying by hand
+awk -F, '$8=="cha" && $7>1' class-edges.csv
+
+# a dependency view: observed edges plus the exactly-resolved ones
+awk -F, 'NR==1 || $8=="direct" || $7==1' class-edges.csv
+```
+
+See [CHA.md §6b](CHA.md#6b-how-much-an-inferred-edge-is-worth-implfanout) for why
+`implFanOut` and not `edgeKind` is the column to filter on, and
+[AI.md](AI.md) for using this file as grounding input for an assistant.
 
 ### `call-graph.dot` (Graphviz, method-level — opt-in via `--dot`)
 
@@ -506,7 +541,7 @@ Human-readable indented output for quick inspection during a working session:
 
 Be aware of these when interpreting results during a modernisation effort:
 
-- **Java version** — Spoon 11.2.1 / ECJ 3.41.0 parses up to Java 23. Java 24/25 sources await a future Spoon upgrade.
+- **Java version** — source parsing is limited by the bundled Spoon/ECJ, not by carve: Spoon 11.4.0 (ECJ 3.46.0) handles up to Java 25. `--java` itself only validates that the level is a positive integer, so passing one the parser does not recognise surfaces as an ECJ error.
 - **Spring AOP self-invocation** — `@Transactional` only takes effect through the Spring proxy. A `this.otherMethod()` call bypasses the proxy and its annotation. The analyser cannot detect self-invocation and conservatively assumes the annotation is honoured (may over-report).
 - **Dynamic dispatch beyond the source tree** — class hierarchy analysis (CHA) resolves interface calls to implementations *in the analysed source*. Third-party interfaces, dynamic proxies, Spring AOP advice, and reflection are not tracked (may under-report).
 - **CHA (class hierarchy analysis) across independent `--source` roots** — the type universe spans every `--source` root at once, so a call on a shared interface (especially `Function`/`Consumer`/`Supplier`) gains edges to implementations in projects the caller has no build dependency on. These phantom couplings inflate the package-coupling report; exclude the edges with `implFanOut > 1` before reading it as a build-dependency map (a phantom always has several candidates, so it lands there). See [CHA.md](CHA.md).
