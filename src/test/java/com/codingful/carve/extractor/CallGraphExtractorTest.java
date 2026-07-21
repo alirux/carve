@@ -59,6 +59,14 @@ class CallGraphExtractorTest {
         return cg;
     }
 
+    /** Finds the application node for the named method, asserting it exists. */
+    private static MethodNode node(CallGraph cg, String methodName) {
+        return cg.applicationNodes().stream()
+            .filter(n -> n.getMethodName().equals(methodName))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("no node for method " + methodName));
+    }
+
     // -----------------------------------------------------------------------
 
     @Test
@@ -82,6 +90,31 @@ class CallGraphExtractorTest {
 
         assertThat(node).isPresent();
         assertThat(node.get().getComponentType()).isEqualTo(SpringComponentType.SERVICE);
+    }
+
+    @Test
+    void GIVEN_a_source_with_an_enum_a_record_and_an_annotation_type_WHEN_extracting_THEN_each_is_registered_as_a_known_type() {
+        // Modern Java declarations must be attributed like classes and interfaces,
+        // so a codebase using records/enums is analysed rather than silently dropped.
+        String source = """
+            package com.example;
+
+            enum Status { NEW, PAID }
+
+            record Money(long cents) {
+                public String format() { return cents + "c"; }
+            }
+
+            @interface Marker { }
+            """;
+
+        CallGraph cg = parse("Types", source);
+
+        var fqns = cg.types().stream().map(CallGraph.TypeInfo::fqn).toList();
+        assertThat(fqns).contains(
+            "com.example.Status", "com.example.Money", "com.example.Marker");
+        // the record's explicit method is a real node
+        assertThat(node(cg, "format").getPackageName()).isEqualTo("com.example");
     }
 
     @Test
@@ -134,6 +167,25 @@ class CallGraphExtractorTest {
 
         assertThat(reqNew).isPresent();
         assertThat(reqNew.get().getPropagation()).isEqualTo(TransactionPropagation.REQUIRES_NEW);
+    }
+
+    @Test
+    void GIVEN_a_read_only_transactional_method_WHEN_extracting_THEN_the_node_is_marked_read_only() {
+        String source = """
+            package com.example;
+
+            import org.springframework.transaction.annotation.Transactional;
+
+            public class ReportService {
+                @Transactional(readOnly = true)
+                public void generate() {}
+            }
+            """;
+
+        CallGraph cg = parse("ReportService", source);
+
+        assertThat(node(cg, "generate").isReadOnly()).isTrue();
+        assertThat(node(cg, "generate").isTransactional()).isTrue();
     }
 
     @Test
