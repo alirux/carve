@@ -51,7 +51,7 @@ map](#9-test-map)
 | Implementation in an unrelated `--source` project | edge added anyway (**phantom**) |
 | Telling inferred from observed | `edgeKind` / `chaWeight`, see §6 |
 | Telling *exact* inference from a guess | `implFanOut`, see §6b |
-| Package coupling metrics | **not** filtered — see §7 |
+| Package coupling metrics | ambiguous inferred edges (`implFanOut > 1`) excluded; exact ones kept — see §7 |
 
 ---
 
@@ -269,14 +269,22 @@ an inferred edge to the only implementation of an interface is a real dependency
 and dropping it understates the coupling as badly as keeping a phantom overstates
 it (§6b).
 
-One caveat, stated plainly: the **package-coupling section is not filtered**.
+The **package-coupling section applies exactly this filter for you.**
 [`CouplingAnalyzer.analysePackageCoupling`](../src/main/java/com/codingful/carve/analyzer/CouplingAnalyzer.java)
-walks every edge without distinguishing them, so afferent/efferent coupling,
-instability and the derived hotspots still include the inferred contributions.
-`summary.chaEdges` tells you how many edges are inferred overall, but not which
-couplings depend on them — for that, filter `class-edges.csv` on `implFanOut`
-(§6b), the GEXF on the same column in Gephi, or the *hide ambiguous only* option
-in either HTML viewer.
+skips the ambiguous inferred edges (`implFanOut > 1`) before counting, so
+afferent/efferent coupling, instability and the derived hotspots — including the
+modernisation `hotspots` and everything downstream of them — are computed over the
+honest dependency view: direct edges plus the exactly-resolved inferences. Only the
+coupling metrics are filtered; the transaction and lock analyses keep every inferred
+edge, per the paragraph above.
+
+The raw exports are left whole. `class-edges.csv`, `class-graph.gexf` and the
+*show all* HTML view still carry every edge with its `edgeKind`/`implFanOut`, so you
+can reproduce the metrics' filter, widen it, or drop `edgeKind=cha` wholesale to see
+how much rests on inference. `summary.chaEdges` still reports the overall inferred
+count. To see *which* couplings the metrics dropped, filter `class-edges.csv` on
+`implFanOut > 1` (§6b), range-filter the same column in Gephi, or pick *hide
+ambiguous only* in either HTML viewer.
 
 ---
 

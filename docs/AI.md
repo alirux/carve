@@ -110,13 +110,17 @@ The same applies to lock risks and cyclic clusters.
 
 ### Have it sanity-check each archetype against what the package actually is
 
-`extractionCandidates` ranks on low afferent coupling, so a **presentation layer
-scores top**: nothing depends on a controller package, by construction. That is a
-leaf, not a bounded context, and "peel it off as a service first" is the wrong
-reading.
+`extractionCandidates` ranks on low afferent coupling, so a package **at the edge of
+the system** would otherwise score top: nothing depends on a controller package, by
+construction. That is a leaf, not a bounded context, and "peel it off as a service
+first" is the wrong reading. carve now drops the clear-cut case for you — a package
+whose Spring components are *all* controllers is left unclassified rather than
+ranked.
 
-Ask the assistant to separate *leaf because it is the edge of the system* from
-*leaf because it is genuinely self-contained* before acting on the order.
+That leaves the mixed case to the assistant. A package that pairs controllers with
+service or repository logic still qualifies, and there the same question applies:
+separate *leaf because it is the edge of the system* from *leaf because it is
+genuinely self-contained* before acting on the order.
 
 ### Triage the risk list
 
@@ -159,7 +163,11 @@ workspace, nine sound edges sacrificed for every doubtful one removed. Point it 
 `edgeKind=cha && implFanOut>1` instead. Full detail in
 [CHA.md §6b](CHA.md#6b-how-much-an-inferred-edge-is-worth-implfanout).
 
-**The coupling metrics include the inferred edges.** Afferent/efferent coupling,
-instability and the hotspots derived from them are computed over every edge, phantom
-ones included. Treat the ranking as a strong hint, not as a source of truth to act on
-unchecked — see [CHA.md §7](CHA.md#7-reading-a-report-that-contains-inferred-edges).
+**The coupling metrics exclude the *ambiguous* inferred edges.** Afferent/efferent
+coupling, instability and the hotspots derived from them are computed over the honest
+dependency view — direct edges plus the exactly-resolved inferences — with the phantom
+edges (`implFanOut > 1`) filtered out. The `class-edges.csv` you attach still carries
+them, tagged, so if you have the assistant build a dependency map from the CSV rather
+than from the metrics, tell it to apply the same filter: `edgeKind=cha &&
+implFanOut>1` are the rows to drop. See
+[CHA.md §7](CHA.md#7-reading-a-report-that-contains-inferred-edges).

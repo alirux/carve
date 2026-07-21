@@ -47,6 +47,11 @@ class CouplingAnalyzerTest {
         return IntStream.range(0, n).mapToObj(i -> prefix + i).collect(Collectors.toSet());
     }
 
+    /** A presentation-only package (all controllers) with the given Ca/Ce shape. */
+    private static PackageCoupling presentationPkg(String name, int ca, int ce) {
+        return new PackageCoupling(name, names("e", ce), names("a", ca), true, true);
+    }
+
     private static List<String> packageNames(List<PackageHotspot> hotspots) {
         return hotspots.stream().map(PackageHotspot::packageName).toList();
     }
@@ -105,6 +110,19 @@ class CouplingAnalyzerTest {
         assertThat(h.stableCores()).isEmpty();
         assertThat(h.unstableHubs()).isEmpty();
         assertThat(h.extractionCandidates()).isEmpty();
+    }
+
+    @Test
+    void GIVEN_an_extractable_shape_that_is_presentation_only_WHEN_classifying_THEN_it_is_not_an_extraction_candidate() {
+        // Same Ca=2, Ce=34 shape as the genuine candidate above, but every
+        // component is a controller: a leaf by construction (nothing calls a
+        // controller), the edge of the system rather than a bounded context.
+        CouplingHotspots h = CouplingAnalyzer.classifyHotspots(List.of(
+            presentationPkg("app.web", 2, 34)));
+
+        assertThat(h.extractionCandidates()).isEmpty();
+        assertThat(h.unstableHubs()).isEmpty();
+        assertThat(h.stableCores()).isEmpty();
     }
 
     @Test

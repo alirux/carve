@@ -23,6 +23,7 @@ import com.codingful.carve.analyzer.CouplingAnalyzer.PackageCoupling;
 import com.codingful.carve.analyzer.CouplingAnalyzer.PackageHotspot;
 import com.codingful.carve.graph.CallGraph;
 import com.codingful.carve.model.MethodNode;
+import com.codingful.carve.model.SpringComponentType;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -157,6 +158,73 @@ class CouplingAnalyzerGraphTest {
 
         assertThat(coupling.get("app.svc").applicationCode()).isTrue();
         assertThat(coupling.get("java.util").applicationCode()).isFalse();
+    }
+
+    // -----------------------------------------------------------------------
+    // Inferred edges — ambiguous ones excluded from the coupling metrics
+    // -----------------------------------------------------------------------
+
+    @Test
+    void GIVEN_an_ambiguous_inferred_edge_WHEN_analysing_package_coupling_THEN_it_is_excluded_but_the_exact_one_is_kept() {
+        CallGraph g = new CallGraph();
+        MethodNode w = appIn("app.web", "w");
+        g.addEdge(w, appIn("app.svc", "s"));           // observed at a call site
+        g.addChaEdge(w, appIn("app.dao", "d"), 1);     // exactly resolved — a real dependency
+        g.addChaEdge(w, appIn("app.ext", "e"), 2);     // one of two guesses — a phantom
+
+        Map<String, PackageCoupling> coupling = new CouplingAnalyzer(g).analysePackageCoupling();
+
+        // svc + dao are counted; the ambiguous ext edge is dropped, so ext never appears.
+        assertThat(coupling.get("app.web").ce()).isEqualTo(2);
+        assertThat(coupling.get("app.web").efferentDependencies())
+            .containsExactlyInAnyOrder("app.svc", "app.dao");
+        assertThat(coupling).doesNotContainKey("app.ext");
+        assertThat(coupling.get("app.dao").ca()).isEqualTo(1);
+    }
+
+    // -----------------------------------------------------------------------
+    // Presentation-only packages — flagged so they can be kept off the
+    // extraction-candidate list
+    // -----------------------------------------------------------------------
+
+    @Test
+    void GIVEN_a_package_of_only_controllers_WHEN_analysing_package_coupling_THEN_it_is_flagged_presentation_only() {
+        CallGraph g = new CallGraph();
+        MethodNode ctrl = app("c").pkg("app.web").type(SpringComponentType.REST_CONTROLLER).build();
+        MethodNode svc  = app("s").pkg("app.svc").type(SpringComponentType.SERVICE).build();
+        g.addEdge(ctrl, svc);
+
+        Map<String, PackageCoupling> coupling = new CouplingAnalyzer(g).analysePackageCoupling();
+
+        assertThat(coupling.get("app.web").presentationOnly()).isTrue();
+        assertThat(coupling.get("app.svc").presentationOnly()).isFalse();
+    }
+
+    @Test
+    void GIVEN_a_package_mixing_a_controller_and_a_service_WHEN_analysing_package_coupling_THEN_it_is_not_presentation_only() {
+        CallGraph g = new CallGraph();
+        MethodNode ctrl = app("c").pkg("app.web").type(SpringComponentType.CONTROLLER).build();
+        MethodNode svc  = app("s").pkg("app.web").type(SpringComponentType.SERVICE).build();
+        MethodNode dao  = app("d").pkg("app.dao").type(SpringComponentType.REPOSITORY).build();
+        g.addEdge(ctrl, dao);
+        g.addEdge(svc, dao);
+
+        assertThat(new CouplingAnalyzer(g).analysePackageCoupling().get("app.web").presentationOnly())
+            .isFalse();
+    }
+
+    @Test
+    void GIVEN_a_controller_package_with_untyped_helpers_WHEN_analysing_package_coupling_THEN_still_presentation_only() {
+        // A DTO or plain helper (no Spring stereotype) does not disqualify the package.
+        CallGraph g = new CallGraph();
+        MethodNode ctrl = app("c").pkg("app.web").type(SpringComponentType.REST_CONTROLLER).build();
+        MethodNode dto  = app("dto").pkg("app.web").build(); // SpringComponentType.NONE
+        MethodNode svc  = app("s").pkg("app.svc").type(SpringComponentType.SERVICE).build();
+        g.addEdge(ctrl, svc);
+        g.addEdge(ctrl, dto);
+
+        assertThat(new CouplingAnalyzer(g).analysePackageCoupling().get("app.web").presentationOnly())
+            .isTrue();
     }
 
     // -----------------------------------------------------------------------

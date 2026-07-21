@@ -19,6 +19,7 @@ package com.codingful.carve.analyzer;
 
 import com.codingful.carve.graph.CallGraph;
 import com.codingful.carve.model.MethodNode;
+import com.codingful.carve.model.SpringComponentType;
 import org.jgrapht.alg.connectivity.KosarajuStrongConnectivityInspector;
 import org.jgrapht.graph.AsSubgraph;
 import org.jgrapht.graph.DefaultEdge;
@@ -76,11 +77,26 @@ public class CouplingAnalyzer {
      * Returns a map of package name → {@link PackageCoupling}.
      * Edges between two methods in the same package are treated as internal;
      * edges crossing a package boundary count toward efferent (Ce) coupling.
+     *
+     * <p><b>Ambiguous inferred edges are excluded.</b> An edge that CHA created
+     * while choosing between several implementations (fan-out &gt; 1) is a genuine
+     * over-approximation — a phantom coupling that would otherwise inflate Ca/Ce,
+     * instability and the derived hotspots. Exactly-resolved inferred edges
+     * (fan-out 1, the interface had a single implementation) are kept: they are
+     * sound dependencies, and dropping them would understate the coupling as
+     * badly as keeping a phantom overstates it. This filter is coupling-only —
+     * the transaction and lock analyses keep every inferred edge, since a risk
+     * path worth checking is worth checking regardless of which implementation is
+     * wired. See {@code docs/CHA.md} §6b–§7.
      */
     public Map<String, PackageCoupling> analysePackageCoupling() {
         Map<String, PackageCoupling.Builder> builders = new HashMap<>();
+        Set<String> presentationOnly = presentationOnlyPackages();
 
         for (DefaultEdge edge : callGraph.edges()) {
+            // Drop the guessed CHA edges; keep direct and exactly-resolved ones.
+            if (callGraph.isChaEdge(edge) && callGraph.chaFanOut(edge) > 1) continue;
+
             MethodNode source = callGraph.getRaw().getEdgeSource(edge);
             MethodNode target = callGraph.getRaw().getEdgeTarget(edge);
 
@@ -103,7 +119,42 @@ public class CouplingAnalyzer {
         }
 
         return builders.entrySet().stream()
-            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().build()));
+            .collect(Collectors.toMap(Map.Entry::getKey,
+                e -> e.getValue()
+                      .markPresentationOnly(presentationOnly.contains(e.getKey()))
+                      .build()));
+    }
+
+    /**
+     * Packages whose Spring-managed components are <em>all</em> presentation —
+     * at least one {@code @Controller}/{@code @RestController} and no
+     * service/repository/other business component. Classes with no Spring
+     * stereotype (DTOs, plain helpers) do not disqualify a package: a controller
+     * package naturally carries request/response types.
+     *
+     * <p>Such a package is the edge of the system, not a bounded context. It has
+     * low afferent coupling <i>by construction</i> — nothing depends on a
+     * controller — so it scores as an {@link Archetype#EXTRACTION_CANDIDATE}
+     * without being one. {@link #classify} uses this to keep it off that list.
+     */
+    private Set<String> presentationOnlyPackages() {
+        // pkg → [sawController, sawOtherStereotype]
+        Map<String, boolean[]> seen = new HashMap<>();
+        for (MethodNode n : callGraph.applicationNodes()) {
+            SpringComponentType type = n.getComponentType();
+            if (type == SpringComponentType.NONE) continue;
+            boolean[] flags = seen.computeIfAbsent(n.getPackageName(), k -> new boolean[2]);
+            if (type == SpringComponentType.CONTROLLER
+                    || type == SpringComponentType.REST_CONTROLLER) {
+                flags[0] = true;
+            } else {
+                flags[1] = true;
+            }
+        }
+        return seen.entrySet().stream()
+            .filter(e -> e.getValue()[0] && !e.getValue()[1])
+            .map(Map.Entry::getKey)
+            .collect(Collectors.toSet());
     }
 
     // -----------------------------------------------------------------------
@@ -168,7 +219,10 @@ public class CouplingAnalyzer {
             return Archetype.UNSTABLE_HUB;
         }
         if (ca <= LEAF_MAX_CA && i >= UNSTABLE_MIN_INSTABILITY && ce >= EXTRACTABLE_MIN_CE) {
-            return Archetype.EXTRACTION_CANDIDATE;
+            // A presentation-only package is a leaf by construction (nothing calls
+            // a controller), not a self-contained bounded context. Leave it
+            // unclassified rather than rank it as easy to peel off.
+            return p.presentationOnly() ? null : Archetype.EXTRACTION_CANDIDATE;
         }
         if (ca >= HUB_MIN_CA && i <= STABLE_MAX_INSTABILITY) {
             return Archetype.STABLE_CORE;
@@ -220,8 +274,22 @@ public class CouplingAnalyzer {
         /** Packages that depend on this package (incoming). */
         Set<String> afferentDependencies,
         /** {@code true} when the package belongs to the analysed source (not a library/JDK stub). */
-        boolean applicationCode
+        boolean applicationCode,
+        /**
+         * {@code true} when every Spring-managed component in the package is a
+         * controller — a presentation leaf that is the edge of the system rather
+         * than an extractable bounded context. See {@link #presentationOnlyPackages()}.
+         */
+        boolean presentationOnly
     ) {
+        /** Backwards-compatible constructor for a package with no presentation flag. */
+        public PackageCoupling(String packageName,
+                               Set<String> efferentDependencies,
+                               Set<String> afferentDependencies,
+                               boolean applicationCode) {
+            this(packageName, efferentDependencies, afferentDependencies, applicationCode, false);
+        }
+
         /** Ce — efferent coupling count */
         public int ce() { return efferentDependencies.size(); }
         /** Ca — afferent coupling count */
@@ -242,16 +310,18 @@ public class CouplingAnalyzer {
             private final Set<String> efferent = new HashSet<>();
             private final Set<String> afferent  = new HashSet<>();
             private boolean applicationCode = false;
+            private boolean presentationOnly = false;
 
             Builder(String pkg) { this.pkg = pkg; }
 
             Builder addEfferent(String p) { efferent.add(p); return this; }
             Builder addAfferent(String p) { afferent.add(p); return this; }
             Builder markApplicationCode() { this.applicationCode = true; return this; }
+            Builder markPresentationOnly(boolean v) { this.presentationOnly = v; return this; }
 
             PackageCoupling build() {
                 return new PackageCoupling(
-                    pkg, Set.copyOf(efferent), Set.copyOf(afferent), applicationCode);
+                    pkg, Set.copyOf(efferent), Set.copyOf(afferent), applicationCode, presentationOnly);
             }
         }
     }
