@@ -107,6 +107,22 @@ release tag:
    2. use the semver-correct version you propose, or
    3. cancel.
 
+The annotated tag's message body becomes the GitHub release notes (the workflow
+reads `%(contents:body)`), so write the notes once, in the tag. Structure them:
+
+- **First line** — `carve v<x.y.z> — <short summary>`. This is the release title;
+  everything below it is the body.
+- Then only the sections that apply, in this order, each a heading followed by
+  `-` bullets: **New**, **Fixes**, **Breaking**, **Known limitations**. Drop a
+  section that has nothing in it (an early tag can be title-only).
+- **Breaking** is the one never to omit when it applies — name the changed public
+  API or CLI behaviour and what a caller must do.
+
+Keep the notes short and factual: what changed and why, not how (same rule as
+commit messages). Wrap at ~80 columns. No exact counts from an analysed codebase
+and no client/vendor names — release notes are public. Do not create or push a
+tag without the user asking in that turn; pushing one publishes the release.
+
 ## Naming & confidentiality
 
 - Never commit real client or vendor names into the repository (code, tests,
