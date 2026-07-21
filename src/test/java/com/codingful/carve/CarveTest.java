@@ -45,6 +45,10 @@ class CarveTest {
     private String runPrintSummary(CarveConfig config) {
         CallGraph cg = new CallGraph();
         cg.addEdge(app("a").build(), app("b").build()); // 2 vertices, 1 edge
+        return runPrintSummary(config, cg);
+    }
+
+    private String runPrintSummary(CarveConfig config, CallGraph cg) {
         Analyses empty = new Analyses(
             List.of(), List.of(), List.of(), Map.of(), List.of(), List.of());
 
@@ -71,6 +75,18 @@ class CarveTest {
         assertThat(out).contains("class-graph.html");
         assertThat(out).contains("package-graph.html");
         assertThat(out).contains("analysis.json");
+        assertThat(out).doesNotContain("Lombok"); // no Lombok type in this graph
+    }
+
+    @Test
+    void GIVEN_lombok_detected_WHEN_printing_summary_THEN_a_warning_note_is_shown() {
+        CallGraph cg = new CallGraph();
+        cg.addEdge(app("a").build(), app("b").build());
+        cg.markLombokType();
+
+        assertThat(runPrintSummary(config(false), cg))
+            .contains("Lombok detected")
+            .contains("docs/LOMBOK.md");
     }
 
     @Test

@@ -33,6 +33,7 @@ import spoon.Launcher;
 import spoon.reflect.CtModel;
 
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -90,14 +91,26 @@ public class Carve {
     // -----------------------------------------------------------------------
 
     public static void main(String[] args) throws IOException {
+        int exitCode = run(args, System.err);
+        if (exitCode != 0) System.exit(exitCode);
+    }
+
+    /**
+     * Runs the full pipeline and returns a process exit code — {@code 0} on
+     * success, {@code 1} on a usage error. Kept free of {@link System#exit} so
+     * the error path is drivable from tests; {@link #main} translates a non-zero
+     * return into the actual exit.
+     *
+     * @param err where a usage error is reported (normally {@code System.err})
+     */
+    static int run(String[] args, PrintStream err) throws IOException {
         CarveConfig config;
         try {
             config = CarveConfig.parse(args);
         } catch (CarveConfig.UsageException e) {
-            System.err.println(e.getMessage());
-            System.err.println(USAGE);
-            System.exit(1);
-            return; // unreachable; satisfies definite-assignment of config below
+            err.println(e.getMessage());
+            err.println(USAGE);
+            return 1;
         }
         long t0 = System.nanoTime();
 
@@ -107,6 +120,7 @@ public class Carve {
         ReportWriter.write(cg, result, config);
         printSummary(cg, result, config, t0);
         new ConsoleReporter(System.out).printFooter();
+        return 0;
     }
 
     // -----------------------------------------------------------------------
@@ -272,7 +286,7 @@ public class Carve {
      *   <li>If nothing is found, return {@link UserDefinedMarkers#EMPTY}.</li>
      * </ol>
      */
-    private static UserDefinedMarkers resolveMarkers(String markersFlag, String sourceRoot)
+    static UserDefinedMarkers resolveMarkers(String markersFlag, String sourceRoot)
             throws IOException {
 
         if (markersFlag != null) {
