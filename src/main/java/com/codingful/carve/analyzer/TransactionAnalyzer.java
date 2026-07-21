@@ -104,15 +104,6 @@ public class TransactionAnalyzer {
         return risks;
     }
 
-    /**
-     * Returns only the risks where an HTTP call is made inside a tx.
-     * This is the most actionable category: HTTP calls under a DB tx
-     * hold the connection open for the duration of a network round-trip.
-     */
-    public List<TransactionRisk> findHttpInTransactionRisks() {
-        return findRisks().stream().filter(TransactionRisk::involvesHttp).toList();
-    }
-
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------

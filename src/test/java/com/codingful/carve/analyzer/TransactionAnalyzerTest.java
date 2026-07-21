@@ -93,6 +93,54 @@ class TransactionAnalyzerTest {
     }
 
     @Test
+    void GIVEN_an_intermediate_transactional_that_joins_the_scope_WHEN_analysing_THEN_the_risk_still_reaches_the_root() {
+        CallGraph cg = new CallGraph();
+
+        MethodNode root  = appNode("outerTx", true, TransactionPropagation.REQUIRED);
+        // MANDATORY joins the caller's transaction rather than starting a new one,
+        // so the scope continues through it — unlike REQUIRES_NEW above.
+        MethodNode inner = appNode("innerJoins", true, TransactionPropagation.MANDATORY);
+        MethodNode httpSite = httpNode("callExternal");
+
+        cg.addVertex(root);
+        cg.addVertex(inner);
+        cg.addVertex(httpSite);
+        cg.addEdge(root, inner);
+        cg.addEdge(inner, httpSite);
+
+        List<TransactionRisk> risks = new TransactionAnalyzer(cg).findRisks();
+
+        // The call is reachable from root because MANDATORY did not break the scope.
+        assertThat(risks).anyMatch(r ->
+            r.transactionalRoot().equals(root) && r.externalCallSite().equals(httpSite));
+    }
+
+    @Test
+    void GIVEN_an_external_call_reachable_by_two_paths_from_one_root_WHEN_analysing_THEN_it_is_reported_once() {
+        CallGraph cg = new CallGraph();
+
+        MethodNode root = appNode("handle", true, TransactionPropagation.REQUIRED);
+        MethodNode viaA = appNode("viaA", false, TransactionPropagation.REQUIRED);
+        MethodNode viaB = appNode("viaB", false, TransactionPropagation.REQUIRED);
+        MethodNode httpSite = httpNode("callGateway");
+
+        cg.addVertex(root);
+        cg.addVertex(viaA);
+        cg.addVertex(viaB);
+        cg.addVertex(httpSite);
+        cg.addEdge(root, viaA);
+        cg.addEdge(root, viaB);
+        cg.addEdge(viaA, httpSite);   // diamond: httpSite reachable two ways
+        cg.addEdge(viaB, httpSite);
+
+        List<TransactionRisk> risks = new TransactionAnalyzer(cg).findRisks();
+
+        // The shared call site is visited once, so the risk is not double-counted.
+        assertThat(risks).hasSize(1);
+        assertThat(risks.get(0).externalCallSite()).isEqualTo(httpSite);
+    }
+
+    @Test
     void GIVEN_an_http_call_outside_any_transaction_WHEN_analysing_THEN_no_risk() {
         CallGraph cg = new CallGraph();
 
