@@ -93,14 +93,6 @@ public class UserDefinedMarkers {
         }
     }
 
-    /** Loads markers from a classpath resource (useful in tests). */
-    public static UserDefinedMarkers fromClasspath(String resource) throws IOException {
-        try (InputStream in = UserDefinedMarkers.class.getResourceAsStream(resource)) {
-            if (in == null) return EMPTY;
-            return fromStream(in, resource);
-        }
-    }
-
     private static UserDefinedMarkers fromStream(InputStream in, String source)
         throws IOException {
 
@@ -142,6 +134,4 @@ public class UserDefinedMarkers {
         }
         return null;
     }
-
-    public boolean isEmpty() { return exact.isEmpty() && prefixes.isEmpty(); }
 }

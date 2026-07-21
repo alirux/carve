@@ -112,7 +112,6 @@ class CarvePipelineTest {
 
         UserDefinedMarkers resolved = Carve.resolveMarkers(markers.toString(), FIXTURE);
 
-        assertThat(resolved.isEmpty()).isFalse();
         assertThat(resolved.detect("com.acme.Gateway")).isEqualTo(ExternalCallType.HTTP);
     }
 
@@ -124,7 +123,6 @@ class CarvePipelineTest {
 
         UserDefinedMarkers resolved = Carve.resolveMarkers(null, src.toString());
 
-        assertThat(resolved.isEmpty()).isFalse();
         assertThat(resolved.detect("com.acme.Bus")).isEqualTo(ExternalCallType.MESSAGING);
     }
 }
